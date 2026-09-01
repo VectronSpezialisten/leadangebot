@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Angebotskonfigurator – Kasse-Stimmt</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <header class="app-header">
+    <div class="app-header__brand">Angebotskonfigurator</div>
+    <div class="app-header__party">
+      <span id="party-name">Kunde wird geladen …</span>
+    </div>
+    <button id="save-button" class="button button--primary" disabled>Speichern</button>
+  </header>
+
+  <main class="app-layout">
+
+    <aside class="catalog" aria-label="Artikelkatalog">
+      <h2 class="catalog__title">Katalog</h2>
+      <input
+        type="search"
+        id="catalog-search"
+        class="catalog__search"
+        placeholder="Artikel suchen …"
+        autocomplete="off"
+      />
+      <ul id="catalog-list" class="catalog__list"></ul>
+    </aside>
+
+    <section class="board" aria-label="Module">
+
+      <div class="block" data-block="kostenpflichtig">
+        <h2 class="block__title">Module kostenpflichtig</h2>
+        <ul class="block__list" data-block-list="kostenpflichtig"></ul>
+        <div class="block__sum" data-block-sum="kostenpflichtig">0,00 €</div>
+      </div>
+
+      <div class="block" data-block="enthalten">
+        <h2 class="block__title">Module enthalten</h2>
+        <ul class="block__list" data-block-list="enthalten"></ul>
+        <div class="block__sum block__sum--muted">im Preis enthalten</div>
+      </div>
+
+      <div class="block" data-block="kauf">
+        <h2 class="block__title">Module Kauf</h2>
+        <ul class="block__list" data-block-list="kauf"></ul>
+        <div class="block__sum" data-block-sum="kauf">0,00 €</div>
+      </div>
+
+      <div class="block" data-block="vorhanden">
+        <h2 class="block__title">Module vorhanden</h2>
+        <ul class="block__list" data-block-list="vorhanden"></ul>
+        <div class="block__sum block__sum--muted">0,00 €</div>
+      </div>
+
+    </section>
+
+    <section class="service-area" aria-label="Dienstleistung">
+      <h2 class="service-area__title">Dienstleistung</h2>
+      <p class="service-area__hint">Folgt als nächster Baustein, sobald die Modul-Zusammenstellung steht.</p>
+    </section>
+
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
