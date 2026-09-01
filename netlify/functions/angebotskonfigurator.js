@@ -12,9 +12,11 @@
 // deshalb wird die Party vor dem Schreiben komplett geladen und nur die vier
 // betroffenen customAttributes-Einträge werden verändert.
 
-const WECLAPP_SUBDOMAIN = process.env.WECLAPP_SUBDOMAIN;
-const WECLAPP_API_KEY = process.env.WECLAPP_API_KEY;
-const BASE_URL = `https://${WECLAPP_SUBDOMAIN}.weclapp.com/webapp/api/v2`;
+// Gleiche Env-Var-Namen wie bei Leadstart (WECLAPP_DOMAIN = kompletter Domain-String,
+// z.B. thiedebrauer.weclapp.com, nicht nur die Subdomain) - für einen späteren
+// fließenden Übergang zwischen den beiden Apps sollen beide Backends dieselbe
+// Konvention verwenden.
+const BASE_URL = `https://${process.env.WECLAPP_DOMAIN}/webapp/api/v2`;
 
 // Reihenfolge hier = Anzeige-Reihenfolge der Blöcke im Frontend.
 const BLOCK_ATTRIBUTE_IDS = {
@@ -26,11 +28,34 @@ const BLOCK_ATTRIBUTE_IDS = {
 
 const KATALOG_STATUS_ID = '2544460'; // articleStatus "Smart4Pay Konfigurator"
 
+// ---------- Zugangsprüfung (identisch zu Leadstart, gleiche Env Vars) ----------
+
+function pruefeZugang(email, passwort) {
+  const sharedPassword = process.env.SHARED_PASSWORD || '';
+  const allowedEmails = (process.env.ALLOWED_EMAILS || '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+
+  const emailNormalized = (email || '').trim().toLowerCase();
+
+  if (!sharedPassword || passwort !== sharedPassword) {
+    return { ok: false, grund: 'Falsches Passwort.' };
+  }
+  if (allowedEmails.length === 0) {
+    return { ok: false, grund: 'Keine erlaubten E-Mail-Adressen konfiguriert.' };
+  }
+  if (!allowedEmails.includes(emailNormalized)) {
+    return { ok: false, grund: 'Diese E-Mail-Adresse ist nicht freigeschaltet.' };
+  }
+  return { ok: true };
+}
+
 async function weclapp(path, options = {}) {
   const response = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
-      AuthenticationToken: WECLAPP_API_KEY,
+      AuthenticationToken: process.env.WECLAPP_API_TOKEN,
       'Content-Type': 'application/json',
       ...(options.headers || {})
     }
@@ -173,6 +198,30 @@ exports.handler = async (event) => {
       statusCode: 400,
       headers,
       body: JSON.stringify({ fehler: 'Query-Parameter partyId fehlt.' })
+    };
+  }
+
+  // Zugangsdaten kommen bei GET als Query-Parameter (aus dem Link von Leadstart
+  // bzw. der eigenen Login-Box), bei PUT zusätzlich aus dem Body, damit das
+  // Speichern nicht durch eine unvollständige Query-String-Länge riskiert wird.
+  let email;
+  let passwort;
+
+  if (event.httpMethod === 'PUT') {
+    const bodyVorab = JSON.parse(event.body || '{}');
+    email = bodyVorab.email;
+    passwort = bodyVorab.passwort;
+  } else {
+    email = event.queryStringParameters && event.queryStringParameters.email;
+    passwort = event.queryStringParameters && event.queryStringParameters.pw;
+  }
+
+  const zugang = pruefeZugang(email, passwort);
+  if (!zugang.ok) {
+    return {
+      statusCode: 401,
+      headers,
+      body: JSON.stringify({ fehler: zugang.grund })
     };
   }
 
