@@ -404,7 +404,14 @@
     for (const modulName of MODUL_NAMEN) {
       const select = document.getElementById("select-" + modulName);
       select.innerHTML = '<option value="">Artikel wählen …</option>';
-      for (const artikel of zustand.katalog) {
+
+      // Nur Artikel zeigen, die in weclapp für diesen Block freigegeben wurden
+      // (Custom Attribute "S4P Konfigurator", MULTISELECT_LIST auf Artikel-Ebene).
+      const passendeArtikel = zustand.katalog.filter((a) =>
+        (a.erlaubteBloecke || []).includes(modulName)
+      );
+
+      for (const artikel of passendeArtikel) {
         const option = document.createElement("option");
         option.value = artikel.articleId;
         option.textContent = `${artikel.name} — ${formatPreis(artikel.price)}`;
