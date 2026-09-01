@@ -251,14 +251,20 @@
 
   .payment-zeile {
     display: flex;
+    align-items: center;
     justify-content: space-between;
+    gap: 12px;
     padding: 6px 0;
     border-bottom: 1px solid rgba(0,0,0,0.06);
     font-size: 14px;
   }
   .payment-zeile:last-child { border-bottom: none; }
-  .payment-label { color: var(--gray-700); }
-  .payment-wert { font-weight: 600; }
+  .payment-label { color: var(--gray-700); white-space: nowrap; }
+  .payment-input {
+    width: 200px;
+    padding: 6px 8px;
+    font-size: 14px;
+  }
 </style>
 </head>
 <body>
@@ -338,15 +344,15 @@
     <div class="block-heading">Payment</div>
     <div class="payment-zeile">
       <span class="payment-label">Tariftyp</span>
-      <span id="payment-tariftyp" class="payment-wert">–</span>
+      <select id="payment-tariftyp" class="payment-input"></select>
     </div>
     <div class="payment-zeile">
       <span class="payment-label">Faktor</span>
-      <span id="payment-faktor" class="payment-wert">–</span>
+      <input type="text" id="payment-faktor" class="payment-input" inputmode="decimal" placeholder="z.B. 0,0355">
     </div>
     <div class="payment-zeile">
       <span class="payment-label">Kosten je Transaktion</span>
-      <span id="payment-txn-fix" class="payment-wert">–</span>
+      <input type="text" id="payment-txn-fix" class="payment-input" inputmode="decimal" placeholder="z.B. 0,08">
     </div>
 
     <div class="error-msg" id="ladeFehler"></div>
@@ -372,7 +378,8 @@
     partyId: null,
     katalog: [],
     module: { kostenpflichtig: [], enthalten: [], kauf: [], vorhanden: [] },
-    ausgewaehlteArtikelId: { kostenpflichtig: null, enthalten: null, kauf: null, vorhanden: null }
+    ausgewaehlteArtikelId: { kostenpflichtig: null, enthalten: null, kauf: null, vorhanden: null },
+    payment: { tariftypId: null, faktor: null, kostenProTransaktion: null }
   };
 
   function getZugang() {
@@ -424,16 +431,29 @@
     return response.json();
   }
 
+  function alsZahlOderNull(kommaWert) {
+    if (kommaWert === null || kommaWert === undefined || kommaWert === "") return null;
+    const normalisiert = String(kommaWert).trim().replace(",", ".");
+    const zahl = parseFloat(normalisiert);
+    return Number.isNaN(zahl) ? null : zahl;
+  }
+
   async function speichereDaten(partyId, zugang) {
     const moduleAlsIds = {};
     for (const modulName of MODUL_NAMEN) {
       moduleAlsIds[modulName] = zustand.module[modulName].map((eintrag) => eintrag.articleId);
     }
 
+    const paymentPayload = {
+      tariftypId: zustand.payment.tariftypId || null,
+      faktor: alsZahlOderNull(zustand.payment.faktor),
+      kostenProTransaktion: alsZahlOderNull(zustand.payment.kostenProTransaktion)
+    };
+
     const response = await fetch(`${FUNCTION_URL}?partyId=${encodeURIComponent(partyId)}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ blocks: moduleAlsIds, email: zugang.email, passwort: zugang.passwort })
+      body: JSON.stringify({ blocks: moduleAlsIds, payment: paymentPayload, email: zugang.email, passwort: zugang.passwort })
     });
 
     if (response.status === 401) {
@@ -474,62 +494,61 @@
     return zustand.module[modulName].reduce((summe, a) => summe + a.price, 0);
   }
 
+  function zeigeTreffer(modulName) {
+    const input = document.getElementById("suche-" + modulName);
+    const ergebnisContainer = document.getElementById("ergebnisse-" + modulName);
+    const suchtext = input.value.trim().toLowerCase();
+
+    // Bei leerem Suchtext werden ALLE für diesen Block freigegebenen Artikel gezeigt -
+    // so öffnet ein Klick ins leere Feld direkt die komplette Liste zum Durchklicken,
+    // Tippen filtert die Liste danach zusätzlich.
+    const treffer = zustand.katalog.filter((a) =>
+      (a.erlaubteBloecke || []).includes(modulName) &&
+      (suchtext.length === 0 || a.name.toLowerCase().includes(suchtext))
+    );
+
+    ergebnisContainer.innerHTML = "";
+
+    if (treffer.length === 0) {
+      const leer = document.createElement("div");
+      leer.className = "such-ergebnis-leer";
+      leer.textContent = "Keine Treffer";
+      ergebnisContainer.appendChild(leer);
+    } else {
+      treffer.forEach((artikel) => {
+        const zeile = document.createElement("div");
+        zeile.className = "such-ergebnis-zeile";
+        zeile.textContent = (modulName === "enthalten" || modulName === "vorhanden")
+          ? artikel.name
+          : `${artikel.name} — ${formatPreis(artikel.price)}`;
+        // mousedown statt click: feuert vor dem blur des Inputs, sonst
+        // wuerde die Ergebnisliste schon verschwinden, bevor der Klick zaehlt.
+        zeile.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          input.value = artikel.name;
+          zustand.ausgewaehlteArtikelId[modulName] = artikel.articleId;
+          ergebnisContainer.style.display = "none";
+        });
+        ergebnisContainer.appendChild(zeile);
+      });
+    }
+
+    ergebnisContainer.style.display = "block";
+  }
+
   function initialisiereSuche(modulName) {
     const input = document.getElementById("suche-" + modulName);
     const ergebnisContainer = document.getElementById("ergebnisse-" + modulName);
 
     input.addEventListener("input", () => {
-      const suchtext = input.value.trim().toLowerCase();
       // Solange frei getippt wird, gilt die vorherige Auswahl nicht mehr -
       // erst ein Klick auf einen Treffer setzt sie wieder.
       zustand.ausgewaehlteArtikelId[modulName] = null;
-
-      if (suchtext.length === 0) {
-        ergebnisContainer.style.display = "none";
-        ergebnisContainer.innerHTML = "";
-        return;
-      }
-
-      // Nur Artikel zeigen, die in weclapp für diesen Block freigegeben sind
-      // (Custom Attribute "S4P Konfigurator") UND zum Suchtext passen.
-      const treffer = zustand.katalog.filter((a) =>
-        (a.erlaubteBloecke || []).includes(modulName) &&
-        a.name.toLowerCase().includes(suchtext)
-      );
-
-      ergebnisContainer.innerHTML = "";
-
-      if (treffer.length === 0) {
-        const leer = document.createElement("div");
-        leer.className = "such-ergebnis-leer";
-        leer.textContent = "Keine Treffer";
-        ergebnisContainer.appendChild(leer);
-      } else {
-        treffer.forEach((artikel) => {
-          const zeile = document.createElement("div");
-          zeile.className = "such-ergebnis-zeile";
-          zeile.textContent = (modulName === "enthalten" || modulName === "vorhanden")
-            ? artikel.name
-            : `${artikel.name} — ${formatPreis(artikel.price)}`;
-          // mousedown statt click: feuert vor dem blur des Inputs, sonst
-          // wuerde die Ergebnisliste schon verschwinden, bevor der Klick zaehlt.
-          zeile.addEventListener("mousedown", (e) => {
-            e.preventDefault();
-            input.value = artikel.name;
-            zustand.ausgewaehlteArtikelId[modulName] = artikel.articleId;
-            ergebnisContainer.style.display = "none";
-          });
-          ergebnisContainer.appendChild(zeile);
-        });
-      }
-
-      ergebnisContainer.style.display = "block";
+      zeigeTreffer(modulName);
     });
 
     input.addEventListener("focus", () => {
-      if (input.value.trim().length > 0 && ergebnisContainer.innerHTML !== "") {
-        ergebnisContainer.style.display = "block";
-      }
+      zeigeTreffer(modulName);
     });
 
     input.addEventListener("blur", () => {
@@ -641,13 +660,40 @@
       renderModule();
 
       const payment = daten.payment || {};
-      document.getElementById("payment-tariftyp").textContent = payment.tariftyp || "–";
-      document.getElementById("payment-faktor").textContent = payment.faktor != null
-        ? payment.faktor.toString().replace(".", ",")
-        : "–";
-      document.getElementById("payment-txn-fix").textContent = payment.kostenProTransaktion != null
-        ? formatPreis(payment.kostenProTransaktion)
-        : "–";
+
+      const tariftypSelect = document.getElementById("payment-tariftyp");
+      tariftypSelect.innerHTML = '<option value="">– keine Auswahl –</option>';
+      const optionen = (payment.tariftyp && payment.tariftyp.optionen) || [];
+      for (const option of optionen) {
+        const optionEl = document.createElement("option");
+        optionEl.value = option.id;
+        optionEl.textContent = option.value;
+        tariftypSelect.appendChild(optionEl);
+      }
+      const gewaehlteTariftypId = (payment.tariftyp && payment.tariftyp.selectedId) || "";
+      tariftypSelect.value = gewaehlteTariftypId;
+      zustand.payment.tariftypId = gewaehlteTariftypId || null;
+
+      const faktorInput = document.getElementById("payment-faktor");
+      faktorInput.value = payment.faktor != null ? payment.faktor.toString().replace(".", ",") : "";
+      zustand.payment.faktor = payment.faktor;
+
+      const txnFixInput = document.getElementById("payment-txn-fix");
+      txnFixInput.value = payment.kostenProTransaktion != null ? payment.kostenProTransaktion.toString().replace(".", ",") : "";
+      zustand.payment.kostenProTransaktion = payment.kostenProTransaktion;
+
+      tariftypSelect.addEventListener("change", () => {
+        zustand.payment.tariftypId = tariftypSelect.value || null;
+        markiereUngespeichert();
+      });
+      faktorInput.addEventListener("input", () => {
+        zustand.payment.faktor = faktorInput.value;
+        markiereUngespeichert();
+      });
+      txnFixInput.addEventListener("input", () => {
+        zustand.payment.kostenProTransaktion = txnFixInput.value;
+        markiereUngespeichert();
+      });
     } catch (err) {
       if (err.message !== "Nicht autorisiert") {
         zeigeLadeFehler(err.message);
