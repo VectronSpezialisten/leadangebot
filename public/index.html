@@ -181,6 +181,42 @@
     display: flex;
     gap: 8px;
     margin-top: 12px;
+    position: relative;
+  }
+  .such-auswahl {
+    flex: 1;
+    position: relative;
+  }
+  .such-auswahl input {
+    width: 100%;
+  }
+  .such-ergebnisse {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: var(--white);
+    border: 1px solid var(--gray-300);
+    border-radius: 8px;
+    max-height: 220px;
+    overflow-y: auto;
+    z-index: 10;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  }
+  .such-ergebnis-zeile {
+    padding: 8px 12px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .such-ergebnis-zeile:hover {
+    background: var(--gray-100);
+  }
+  .such-ergebnis-leer {
+    padding: 8px 12px;
+    font-size: 13px;
+    color: var(--gray-500);
+    font-style: italic;
   }
   .btn-auto {
     width: auto;
@@ -244,7 +280,10 @@
     <div class="block-heading">Modul kostenpflichtig</div>
     <div id="liste-kostenpflichtig"></div>
     <div class="modul-footer">
-      <select id="select-kostenpflichtig"></select>
+      <div class="such-auswahl">
+        <input type="text" id="suche-kostenpflichtig" placeholder="Artikel suchen …" autocomplete="off">
+        <div class="such-ergebnisse" id="ergebnisse-kostenpflichtig"></div>
+      </div>
       <button type="button" class="btn-auto" id="add-kostenpflichtig">+ Hinzufügen</button>
     </div>
     <div class="modul-summe" id="summe-kostenpflichtig">0,00 €</div>
@@ -252,7 +291,10 @@
     <div class="block-heading">Modul enthalten</div>
     <div id="liste-enthalten"></div>
     <div class="modul-footer">
-      <select id="select-enthalten"></select>
+      <div class="such-auswahl">
+        <input type="text" id="suche-enthalten" placeholder="Artikel suchen …" autocomplete="off">
+        <div class="such-ergebnisse" id="ergebnisse-enthalten"></div>
+      </div>
       <button type="button" class="btn-auto" id="add-enthalten">+ Hinzufügen</button>
     </div>
     <div class="modul-summe dezent">im Preis enthalten</div>
@@ -260,7 +302,10 @@
     <div class="block-heading">Modul Kauf</div>
     <div id="liste-kauf"></div>
     <div class="modul-footer">
-      <select id="select-kauf"></select>
+      <div class="such-auswahl">
+        <input type="text" id="suche-kauf" placeholder="Artikel suchen …" autocomplete="off">
+        <div class="such-ergebnisse" id="ergebnisse-kauf"></div>
+      </div>
       <button type="button" class="btn-auto" id="add-kauf">+ Hinzufügen</button>
     </div>
     <div class="modul-summe" id="summe-kauf">0,00 €</div>
@@ -268,10 +313,13 @@
     <div class="block-heading">Modul vorhanden</div>
     <div id="liste-vorhanden"></div>
     <div class="modul-footer">
-      <select id="select-vorhanden"></select>
+      <div class="such-auswahl">
+        <input type="text" id="suche-vorhanden" placeholder="Artikel suchen …" autocomplete="off">
+        <div class="such-ergebnisse" id="ergebnisse-vorhanden"></div>
+      </div>
       <button type="button" class="btn-auto" id="add-vorhanden">+ Hinzufügen</button>
     </div>
-    <div class="modul-summe dezent">0,00 €</div>
+    <div class="modul-summe dezent">Bestand beim Kunden</div>
 
     <div class="block-heading">Dienstleistung</div>
     <p id="dienstleistungHinweis">Folgt als nächster Baustein, sobald die Modul-Zusammenstellung steht.</p>
@@ -298,7 +346,8 @@
   const zustand = {
     partyId: null,
     katalog: [],
-    module: { kostenpflichtig: [], enthalten: [], kauf: [], vorhanden: [] }
+    module: { kostenpflichtig: [], enthalten: [], kauf: [], vorhanden: [] },
+    ausgewaehlteArtikelId: { kostenpflichtig: null, enthalten: null, kauf: null, vorhanden: null }
   };
 
   function getZugang() {
@@ -400,24 +449,67 @@
     return zustand.module[modulName].reduce((summe, a) => summe + a.price, 0);
   }
 
-  function renderKatalogAuswahl() {
-    for (const modulName of MODUL_NAMEN) {
-      const select = document.getElementById("select-" + modulName);
-      select.innerHTML = '<option value="">Artikel wählen …</option>';
+  function initialisiereSuche(modulName) {
+    const input = document.getElementById("suche-" + modulName);
+    const ergebnisContainer = document.getElementById("ergebnisse-" + modulName);
 
-      // Nur Artikel zeigen, die in weclapp für diesen Block freigegeben wurden
-      // (Custom Attribute "S4P Konfigurator", MULTISELECT_LIST auf Artikel-Ebene).
-      const passendeArtikel = zustand.katalog.filter((a) =>
-        (a.erlaubteBloecke || []).includes(modulName)
+    input.addEventListener("input", () => {
+      const suchtext = input.value.trim().toLowerCase();
+      // Solange frei getippt wird, gilt die vorherige Auswahl nicht mehr -
+      // erst ein Klick auf einen Treffer setzt sie wieder.
+      zustand.ausgewaehlteArtikelId[modulName] = null;
+
+      if (suchtext.length === 0) {
+        ergebnisContainer.style.display = "none";
+        ergebnisContainer.innerHTML = "";
+        return;
+      }
+
+      // Nur Artikel zeigen, die in weclapp für diesen Block freigegeben sind
+      // (Custom Attribute "S4P Konfigurator") UND zum Suchtext passen.
+      const treffer = zustand.katalog.filter((a) =>
+        (a.erlaubteBloecke || []).includes(modulName) &&
+        a.name.toLowerCase().includes(suchtext)
       );
 
-      for (const artikel of passendeArtikel) {
-        const option = document.createElement("option");
-        option.value = artikel.articleId;
-        option.textContent = `${artikel.name} — ${formatPreis(artikel.price)}`;
-        select.appendChild(option);
+      ergebnisContainer.innerHTML = "";
+
+      if (treffer.length === 0) {
+        const leer = document.createElement("div");
+        leer.className = "such-ergebnis-leer";
+        leer.textContent = "Keine Treffer";
+        ergebnisContainer.appendChild(leer);
+      } else {
+        treffer.forEach((artikel) => {
+          const zeile = document.createElement("div");
+          zeile.className = "such-ergebnis-zeile";
+          zeile.textContent = (modulName === "enthalten" || modulName === "vorhanden")
+            ? artikel.name
+            : `${artikel.name} — ${formatPreis(artikel.price)}`;
+          // mousedown statt click: feuert vor dem blur des Inputs, sonst
+          // wuerde die Ergebnisliste schon verschwinden, bevor der Klick zaehlt.
+          zeile.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            input.value = artikel.name;
+            zustand.ausgewaehlteArtikelId[modulName] = artikel.articleId;
+            ergebnisContainer.style.display = "none";
+          });
+          ergebnisContainer.appendChild(zeile);
+        });
       }
-    }
+
+      ergebnisContainer.style.display = "block";
+    });
+
+    input.addEventListener("focus", () => {
+      if (input.value.trim().length > 0 && ergebnisContainer.innerHTML !== "") {
+        ergebnisContainer.style.display = "block";
+      }
+    });
+
+    input.addEventListener("blur", () => {
+      setTimeout(() => { ergebnisContainer.style.display = "none"; }, 150);
+    });
   }
 
   function renderModule() {
@@ -439,10 +531,6 @@
         const name = document.createElement("span");
         name.className = "artikel-name";
         name.textContent = artikel.name;
-
-        const preis = document.createElement("span");
-        preis.className = "artikel-preis";
-        preis.textContent = modulName === "vorhanden" ? formatPreis(0) : formatPreis(artikel.price);
 
         const controls = document.createElement("div");
         controls.className = "artikel-controls";
@@ -468,7 +556,17 @@
         entfernen.addEventListener("click", () => entferneAusModul(modulName, artikel.articleId));
 
         controls.append(hoch, runter, entfernen);
-        zeile.append(name, preis, controls);
+
+        // "enthalten" und "vorhanden" haben keinen relevanten Einzelpreis fürs Angebot -
+        // deshalb hier bewusst keine Preisanzeige, statt verwirrend 0,00 € zu zeigen.
+        if (modulName === "enthalten" || modulName === "vorhanden") {
+          zeile.append(name, controls);
+        } else {
+          const preis = document.createElement("span");
+          preis.className = "artikel-preis";
+          preis.textContent = formatPreis(artikel.price);
+          zeile.append(name, preis, controls);
+        }
         container.appendChild(zeile);
       });
     }
@@ -483,14 +581,14 @@
   function bindeHinzufuegenButtons() {
     for (const modulName of MODUL_NAMEN) {
       document.getElementById("add-" + modulName).addEventListener("click", () => {
-        const select = document.getElementById("select-" + modulName);
-        const articleId = select.value;
+        const articleId = zustand.ausgewaehlteArtikelId[modulName];
         if (!articleId) return;
 
         const artikel = zustand.katalog.find((a) => a.articleId === articleId);
         if (artikel) {
           fuegeZuModulHinzu(modulName, artikel);
-          select.value = "";
+          document.getElementById("suche-" + modulName).value = "";
+          zustand.ausgewaehlteArtikelId[modulName] = null;
         }
       });
     }
@@ -512,7 +610,9 @@
       zustand.module = daten.blocks;
 
       document.getElementById("partyName").textContent = daten.party.company;
-      renderKatalogAuswahl();
+      for (const modulName of MODUL_NAMEN) {
+        initialisiereSuche(modulName);
+      }
       renderModule();
     } catch (err) {
       if (err.message !== "Nicht autorisiert") {
