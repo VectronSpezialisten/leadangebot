@@ -28,6 +28,27 @@ const BLOCK_ATTRIBUTE_IDS = {
 
 const KATALOG_STATUS_ID = '2544460'; // articleStatus "Smart4Pay Konfigurator"
 
+// Neues Custom Attribute auf Artikel-Ebene (MULTISELECT_LIST, Label "S4P Konfigurator"):
+// legt fest, in welchem/welchen Block(s) ein Artikel überhaupt wählbar sein darf.
+// Ein Artikel ohne Eintrag hier taucht in KEINEM Block auf, bis er in weclapp getaggt wird.
+const KATALOG_ZUORDNUNG_ATTRIBUTE_ID = '2567322';
+const KATALOG_ZUORDNUNG_WERT_ZU_BLOCK = {
+  '2567324': 'kostenpflichtig',
+  '2567325': 'enthalten',
+  '2567326': 'kauf',
+  '2567327': 'vorhanden'
+};
+
+function ermittleErlaubteBloecke(article) {
+  const attr = (article.customAttributes || []).find(
+    (a) => a.attributeDefinitionId === KATALOG_ZUORDNUNG_ATTRIBUTE_ID
+  );
+  const selectedValues = (attr && attr.selectedValues) || [];
+  return selectedValues
+    .map((v) => KATALOG_ZUORDNUNG_WERT_ZU_BLOCK[v.id])
+    .filter(Boolean);
+}
+
 // ---------- Zugangsprüfung (identisch zu Leadstart, gleiche Env Vars) ----------
 
 function pruefeZugang(email, passwort) {
@@ -80,7 +101,8 @@ function katalogEintragAus(article) {
     articleId: article.id,
     articleNumber: article.articleNumber,
     name: article.name,
-    price: ermittlePreis(article)
+    price: ermittlePreis(article),
+    erlaubteBloecke: ermittleErlaubteBloecke(article)
   };
 }
 
