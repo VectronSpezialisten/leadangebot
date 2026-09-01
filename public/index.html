@@ -248,6 +248,17 @@
     font-size: 13px;
     margin: 0;
   }
+
+  .payment-zeile {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+    font-size: 14px;
+  }
+  .payment-zeile:last-child { border-bottom: none; }
+  .payment-label { color: var(--gray-700); }
+  .payment-wert { font-weight: 600; }
 </style>
 </head>
 <body>
@@ -323,6 +334,20 @@
 
     <div class="block-heading">Dienstleistung</div>
     <p id="dienstleistungHinweis">Folgt als nächster Baustein, sobald die Modul-Zusammenstellung steht.</p>
+
+    <div class="block-heading">Payment</div>
+    <div class="payment-zeile">
+      <span class="payment-label">Tariftyp</span>
+      <span id="payment-tariftyp" class="payment-wert">–</span>
+    </div>
+    <div class="payment-zeile">
+      <span class="payment-label">Faktor</span>
+      <span id="payment-faktor" class="payment-wert">–</span>
+    </div>
+    <div class="payment-zeile">
+      <span class="payment-label">Kosten je Transaktion</span>
+      <span id="payment-txn-fix" class="payment-wert">–</span>
+    </div>
 
     <div class="error-msg" id="ladeFehler"></div>
 
@@ -614,6 +639,15 @@
         initialisiereSuche(modulName);
       }
       renderModule();
+
+      const payment = daten.payment || {};
+      document.getElementById("payment-tariftyp").textContent = payment.tariftyp || "–";
+      document.getElementById("payment-faktor").textContent = payment.faktor != null
+        ? payment.faktor.toString().replace(".", ",")
+        : "–";
+      document.getElementById("payment-txn-fix").textContent = payment.kostenProTransaktion != null
+        ? formatPreis(payment.kostenProTransaktion)
+        : "–";
     } catch (err) {
       if (err.message !== "Nicht autorisiert") {
         zeigeLadeFehler(err.message);
