@@ -39,6 +39,40 @@ const KATALOG_ZUORDNUNG_WERT_ZU_BLOCK = {
   '2567327': 'vorhanden'
 };
 
+// Payment-Block: drei Zusatzfelder auf Party-Ebene (Gruppe "POS & Pay Details").
+// Tariftyp ist ein Auswahlfeld (LIST) -> selectedValueId muss über die Definition
+// aufgelöst werden, Faktor/TXN fix sind einfache Zahlenfelder (DECIMAL).
+const TARIFTYP_ATTRIBUTE_ID = '2544378';
+const FAKTOR_ATTRIBUTE_ID = '2544383';
+const TXN_FIX_ATTRIBUTE_ID = '2544394';
+
+function findeCustomAttribute(party, attributeDefinitionId) {
+  return (party.customAttributes || []).find(
+    (a) => a.attributeDefinitionId === attributeDefinitionId
+  );
+}
+
+async function ladePayment(party) {
+  const tariftypAttr = findeCustomAttribute(party, TARIFTYP_ATTRIBUTE_ID);
+  const faktorAttr = findeCustomAttribute(party, FAKTOR_ATTRIBUTE_ID);
+  const txnFixAttr = findeCustomAttribute(party, TXN_FIX_ATTRIBUTE_ID);
+
+  let tariftypLabel = null;
+  if (tariftypAttr && tariftypAttr.selectedValueId) {
+    // Auswahlfeld: den Klartext des gewählten Werts über die Definition auflösen.
+    const definition = await weclapp(`/customAttributeDefinition/id/${TARIFTYP_ATTRIBUTE_ID}`);
+    const werte = definition.selectableValues || [];
+    const gewaehlt = werte.find((w) => w.id === tariftypAttr.selectedValueId);
+    tariftypLabel = gewaehlt ? gewaehlt.value : null;
+  }
+
+  return {
+    tariftyp: tariftypLabel,
+    faktor: faktorAttr && faktorAttr.numberValue != null ? parseFloat(faktorAttr.numberValue) : null,
+    kostenProTransaktion: txnFixAttr && txnFixAttr.numberValue != null ? parseFloat(txnFixAttr.numberValue) : null
+  };
+}
+
 function ermittleErlaubteBloecke(article) {
   const attr = (article.customAttributes || []).find(
     (a) => a.attributeDefinitionId === KATALOG_ZUORDNUNG_ATTRIBUTE_ID
@@ -158,10 +192,13 @@ async function handleGet(partyId) {
       .filter(Boolean);
   }
 
+  const payment = await ladePayment(party);
+
   return {
     party: { id: party.id, company: party.company },
     katalog,
-    blocks: blocksMitDetails
+    blocks: blocksMitDetails,
+    payment
   };
 }
 
