@@ -57,20 +57,35 @@ async function ladePayment(party) {
   const faktorAttr = findeCustomAttribute(party, FAKTOR_ATTRIBUTE_ID);
   const txnFixAttr = findeCustomAttribute(party, TXN_FIX_ATTRIBUTE_ID);
 
-  let tariftypLabel = null;
-  if (tariftypAttr && tariftypAttr.selectedValueId) {
-    // Auswahlfeld: den Klartext des gewählten Werts über die Definition auflösen.
-    const definition = await weclapp(`/customAttributeDefinition/id/${TARIFTYP_ATTRIBUTE_ID}`);
-    const werte = definition.selectableValues || [];
-    const gewaehlt = werte.find((w) => w.id === tariftypAttr.selectedValueId);
-    tariftypLabel = gewaehlt ? gewaehlt.value : null;
-  }
+  // Tariftyp-Definition immer laden (nicht nur bei vorhandener Auswahl), damit das
+  // Frontend die komplette Optionsliste für ein editierbares Auswahlfeld bekommt.
+  const tariftypDefinition = await weclapp(`/customAttributeDefinition/id/${TARIFTYP_ATTRIBUTE_ID}`);
+  const tariftypOptionen = (tariftypDefinition.selectableValues || []).map((w) => ({
+    id: w.id,
+    value: w.value
+  }));
 
   return {
-    tariftyp: tariftypLabel,
+    tariftyp: {
+      selectedId: (tariftypAttr && tariftypAttr.selectedValueId) || null,
+      optionen: tariftypOptionen
+    },
     faktor: faktorAttr && faktorAttr.numberValue != null ? parseFloat(faktorAttr.numberValue) : null,
     kostenProTransaktion: txnFixAttr && txnFixAttr.numberValue != null ? parseFloat(txnFixAttr.numberValue) : null
   };
+}
+
+// Setzt oder ersetzt einen customAttributes-Eintrag anhand seiner attributeDefinitionId -
+// gemeinsam genutzt für Modul-Blöcke (entityReferences) und Payment-Felder (selectedValueId/numberValue).
+function setzeCustomAttribute(customAttributes, attributeDefinitionId, felder) {
+  const index = customAttributes.findIndex(
+    (a) => a.attributeDefinitionId === attributeDefinitionId
+  );
+  if (index >= 0) {
+    customAttributes[index] = { ...customAttributes[index], ...felder };
+  } else {
+    customAttributes.push({ attributeDefinitionId, ...felder });
+  }
 }
 
 function ermittleErlaubteBloecke(article) {
@@ -203,7 +218,7 @@ async function handleGet(partyId) {
 }
 
 async function handlePut(partyId, body) {
-  const { blocks } = body;
+  const { blocks, payment } = body;
   if (!blocks) {
     throw new Error('Body benötigt Feld "blocks".');
   }
@@ -215,18 +230,24 @@ async function handlePut(partyId, body) {
   for (const [blockName, attributeDefinitionId] of Object.entries(BLOCK_ATTRIBUTE_IDS)) {
     const ids = blocks[blockName] || [];
     const entityReferences = ids.map((id) => ({ entityId: id, entityName: 'article' }));
+    setzeCustomAttribute(customAttributes, attributeDefinitionId, { entityReferences });
+  }
 
-    const bestehenderIndex = customAttributes.findIndex(
-      (a) => a.attributeDefinitionId === attributeDefinitionId
-    );
-
-    if (bestehenderIndex >= 0) {
-      customAttributes[bestehenderIndex] = {
-        ...customAttributes[bestehenderIndex],
-        entityReferences
-      };
-    } else {
-      customAttributes.push({ attributeDefinitionId, entityReferences });
+  if (payment) {
+    if (payment.tariftypId !== undefined) {
+      setzeCustomAttribute(customAttributes, TARIFTYP_ATTRIBUTE_ID, {
+        selectedValueId: payment.tariftypId || null
+      });
+    }
+    if (payment.faktor !== undefined) {
+      setzeCustomAttribute(customAttributes, FAKTOR_ATTRIBUTE_ID, {
+        numberValue: payment.faktor
+      });
+    }
+    if (payment.kostenProTransaktion !== undefined) {
+      setzeCustomAttribute(customAttributes, TXN_FIX_ATTRIBUTE_ID, {
+        numberValue: payment.kostenProTransaktion
+      });
     }
   }
 
