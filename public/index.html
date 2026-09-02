@@ -36,6 +36,7 @@
     box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
     width: 100%;
     max-width: 560px;
+    flex-shrink: 0;
     padding: 32px;
   }
   .page-layout {
@@ -479,7 +480,7 @@
 
     <div class="error-msg" id="ladeFehler"></div>
 
-    <button type="button" id="speichernBtn" disabled>Speichern</button>
+    <button type="button" id="speichernBtn">Speichern</button>
     </div>
 
     <div id="vorschauBereich" style="display:none; margin-top:24px; padding-top:20px; border-top:1px solid var(--gray-300);">
@@ -618,33 +619,27 @@
     return Number.isNaN(zahl) ? null : zahl;
   }
 
-  async function speichereDaten(partyId, zugang) {
+  function baueModuleAlsIds() {
     const moduleAlsIds = {};
     for (const modulName of MODUL_NAMEN) {
       moduleAlsIds[modulName] = zustand.module[modulName].map((eintrag) => eintrag.articleId);
     }
+    return moduleAlsIds;
+  }
 
-    const paymentPayload = {
+  function bauePaymentPayload() {
+    return {
       tariftypId: zustand.payment.tariftypId || null,
       faktor: alsZahlOderNull(zustand.payment.faktor),
       kostenProTransaktion: alsZahlOderNull(zustand.payment.kostenProTransaktion)
     };
+  }
 
-    const response = await fetch(`${FUNCTION_URL}?partyId=${encodeURIComponent(partyId)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ blocks: moduleAlsIds, payment: paymentPayload, email: zugang.email, passwort: zugang.passwort })
-    });
-
-    if (response.status === 401) {
-      clearZugang();
-      zeigeLogin();
-      loginError.textContent = "Anmeldung ungültig. Bitte erneut anmelden.";
-      loginError.style.display = "block";
-      throw new Error("Nicht autorisiert");
-    }
-    if (!response.ok) throw new Error(`Speichern fehlgeschlagen (${response.status})`);
-    return response.json();
+  function ermittleTariftypLabel() {
+    const select = document.getElementById("payment-tariftyp");
+    if (!select || !select.value) return null;
+    const gewaehlteOption = select.options[select.selectedIndex];
+    return gewaehlteOption ? gewaehlteOption.textContent : null;
   }
 
   function fuegeZuModulHinzu(modulName, artikel) {
@@ -1144,8 +1139,21 @@
     async function ladeVorschau(zugang) {
       if (!zustand.ticketId) return;
 
-      const url = `${FUNCTION_URL}?partyId=${encodeURIComponent(zustand.partyId)}&ticketId=${encodeURIComponent(zustand.ticketId)}&aktion=vorschau&email=${encodeURIComponent(zugang.email)}&pw=${encodeURIComponent(zugang.passwort)}`;
-      const response = await fetch(url);
+      const url = `${FUNCTION_URL}?partyId=${encodeURIComponent(zustand.partyId)}&ticketId=${encodeURIComponent(zustand.ticketId)}&aktion=vorschau`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          blocks: zustand.module,
+          payment: {
+            tariftypLabel: ermittleTariftypLabel(),
+            faktor: alsZahlOderNull(zustand.payment.faktor),
+            kostenProTransaktion: alsZahlOderNull(zustand.payment.kostenProTransaktion)
+          },
+          email: zugang.email,
+          passwort: zugang.passwort
+        })
+      });
       if (!response.ok) {
         const fehlerDaten = await response.json().catch(() => ({}));
         throw new Error(fehlerDaten.fehler || `Vorschau fehlgeschlagen (${response.status})`);
@@ -1155,28 +1163,29 @@
       document.getElementById("konfiguratorBereich").style.display = "none";
       document.getElementById("vorschauBereich").style.display = "block";
       document.getElementById("vorschauFrame").srcdoc = daten.html;
-      zustand.vorschauBetreff = daten.betreff;
-      zustand.vorschauEmpfaenger = daten.empfaengerEmail;
     }
 
+    // "Speichern" schreibt bewusst NICHT mehr nach weclapp - erzeugt nur eine
+    // Vorschau aus dem aktuellen Browser-Zustand. Das eigentliche Schreiben
+    // passiert erst beim Versand (siehe sendenBtn), damit weclapp nur den
+    // tatsächlich versendeten Stand als Wahrheit bekommt.
     document.getElementById("speichernBtn").addEventListener("click", async () => {
       const btn = document.getElementById("speichernBtn");
       const zugang = getZugang();
       if (!zugang) { zeigeLogin(); return; }
 
       btn.disabled = true;
-      btn.textContent = "Speichert …";
+      btn.textContent = "Erzeugt Vorschau …";
       try {
-        await speichereDaten(zustand.partyId, zugang);
-        btn.textContent = "Speichern";
-        document.getElementById("ladeFehler").style.display = "none";
         await ladeVorschau(zugang);
+        document.getElementById("ladeFehler").style.display = "none";
       } catch (err) {
-        btn.textContent = "Speichern";
-        btn.disabled = false;
         if (err.message !== "Nicht autorisiert") {
           zeigeLadeFehler(err.message);
         }
+      } finally {
+        btn.textContent = "Speichern";
+        btn.disabled = false;
       }
     });
 
@@ -1195,14 +1204,19 @@
       sendenFehler.style.display = "none";
       sendenErfolg.style.display = "none";
       sendenBtn.disabled = true;
-      sendenBtn.textContent = "Sendet …";
+      sendenBtn.textContent = "Speichert & sendet …";
 
       try {
         const url = `${FUNCTION_URL}?partyId=${encodeURIComponent(zustand.partyId)}&ticketId=${encodeURIComponent(zustand.ticketId)}&aktion=senden`;
         const response = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: zugang.email, passwort: zugang.passwort })
+          body: JSON.stringify({
+            blocks: baueModuleAlsIds(),
+            payment: bauePaymentPayload(),
+            email: zugang.email,
+            passwort: zugang.passwort
+          })
         });
 
         if (!response.ok) {
