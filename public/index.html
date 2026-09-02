@@ -455,9 +455,16 @@
     <div class="modul-summe" id="summe-dienstleistung">0,00 €</div>
 
     <div class="block-heading">Payment</div>
-    <div class="payment-zeile">
-      <span class="payment-label">Tariftyp</span>
-      <select id="payment-tariftyp" class="payment-input"></select>
+    <div style="margin-bottom:14px;">
+      <span class="payment-label" style="display:block; margin-bottom:6px;">Tariftyp</span>
+      <div id="liste-tariftyp"></div>
+      <div class="modul-footer">
+        <div class="such-auswahl">
+          <input type="text" id="suche-tariftyp" placeholder="Tarifartikel suchen …" autocomplete="off">
+          <div class="such-ergebnisse" id="ergebnisse-tariftyp"></div>
+        </div>
+        <button type="button" class="btn-auto" id="add-tariftyp">+ Hinzufügen</button>
+      </div>
     </div>
     <div class="payment-zeile">
       <span class="payment-label">Faktor</span>
@@ -525,8 +532,8 @@
   const STORAGE_KEY = "leadstart_zugang"; // gleicher Key wie Leadstart - falls die
                                           // Apps irgendwann dieselbe Domain teilen,
                                           // ist man dann automatisch schon angemeldet
-  const MODUL_NAMEN = ["kostenpflichtig", "enthalten", "kauf", "vorhanden"];
-  // Zusätzlich zu den vier persistenten Blöcken - für Such-/Hinzufügen-Verkabelung,
+  const MODUL_NAMEN = ["kostenpflichtig", "enthalten", "kauf", "vorhanden", "tariftyp"];
+  // Zusätzlich zu den fünf persistenten Blöcken - für Such-/Hinzufügen-Verkabelung,
   // NICHT für die Speicher-Logik (Dienstleistung/Texte haben noch kein eigenes Party-Feld).
   const ALLE_BLOCK_NAMEN = [...MODUL_NAMEN, "dienstleistung", "texte"];
 
@@ -543,9 +550,9 @@
     gefundenePartyId: null,
     gefundeneTicketId: null,
     katalog: [],
-    module: { kostenpflichtig: [], enthalten: [], kauf: [], vorhanden: [], dienstleistung: [], texte: [] },
-    ausgewaehlteArtikelId: { kostenpflichtig: null, enthalten: null, kauf: null, vorhanden: null, dienstleistung: null, texte: null },
-    payment: { tariftypId: null, faktor: null, kostenProTransaktion: null },
+    module: { kostenpflichtig: [], enthalten: [], kauf: [], vorhanden: [], tariftyp: [], dienstleistung: [], texte: [] },
+    ausgewaehlteArtikelId: { kostenpflichtig: null, enthalten: null, kauf: null, vorhanden: null, tariftyp: null, dienstleistung: null, texte: null },
+    payment: { faktor: null, kostenProTransaktion: null },
     hinweise: ""
   };
 
@@ -643,17 +650,9 @@
 
   function bauePaymentPayload() {
     return {
-      tariftypId: zustand.payment.tariftypId || null,
       faktor: alsZahlOderNull(zustand.payment.faktor),
       kostenProTransaktion: alsZahlOderNull(zustand.payment.kostenProTransaktion)
     };
-  }
-
-  function ermittleTariftypLabel() {
-    const select = document.getElementById("payment-tariftyp");
-    if (!select || !select.value) return null;
-    const gewaehlteOption = select.options[select.selectedIndex];
-    return gewaehlteOption ? gewaehlteOption.textContent : null;
   }
 
   function fuegeZuModulHinzu(modulName, artikel) {
@@ -865,7 +864,7 @@
       treffer.forEach((artikel) => {
         const zeile = document.createElement("div");
         zeile.className = "such-ergebnis-zeile";
-        zeile.textContent = (modulName === "enthalten" || modulName === "vorhanden" || modulName === "texte")
+        zeile.textContent = (modulName === "enthalten" || modulName === "vorhanden" || modulName === "texte" || modulName === "tariftyp")
           ? artikel.name
           : `${artikel.name} — ${formatPreis(artikel.price)}`;
         // mousedown statt click: feuert vor dem blur des Inputs, sonst
@@ -948,9 +947,9 @@
 
         controls.append(hoch, runter, entfernen);
 
-        // "enthalten" und "vorhanden" haben keinen relevanten Einzelpreis fürs Angebot -
-        // deshalb hier bewusst keine Preisanzeige, statt verwirrend 0,00 € zu zeigen.
-        if (modulName === "enthalten" || modulName === "vorhanden") {
+        // "enthalten", "vorhanden" und "tariftyp" haben keinen relevanten Einzelpreis
+        // fürs Angebot - deshalb hier bewusst keine Preisanzeige.
+        if (modulName === "enthalten" || modulName === "vorhanden" || modulName === "tariftyp") {
           zeile.append(name, controls);
         } else {
           const preis = document.createElement("span");
@@ -1054,19 +1053,6 @@
 
       const payment = daten.payment || {};
 
-      const tariftypSelect = document.getElementById("payment-tariftyp");
-      tariftypSelect.innerHTML = '<option value="">– keine Auswahl –</option>';
-      const optionen = (payment.tariftyp && payment.tariftyp.optionen) || [];
-      for (const option of optionen) {
-        const optionEl = document.createElement("option");
-        optionEl.value = option.id;
-        optionEl.textContent = option.value;
-        tariftypSelect.appendChild(optionEl);
-      }
-      const gewaehlteTariftypId = (payment.tariftyp && payment.tariftyp.selectedId) || "";
-      tariftypSelect.value = gewaehlteTariftypId;
-      zustand.payment.tariftypId = gewaehlteTariftypId || null;
-
       const faktorInput = document.getElementById("payment-faktor");
       faktorInput.value = payment.faktor != null ? payment.faktor.toString().replace(".", ",") : "";
       zustand.payment.faktor = payment.faktor;
@@ -1075,10 +1061,6 @@
       txnFixInput.value = payment.kostenProTransaktion != null ? payment.kostenProTransaktion.toString().replace(".", ",") : "";
       zustand.payment.kostenProTransaktion = payment.kostenProTransaktion;
 
-      tariftypSelect.addEventListener("change", () => {
-        zustand.payment.tariftypId = tariftypSelect.value || null;
-        markiereUngespeichert();
-      });
       faktorInput.addEventListener("input", () => {
         zustand.payment.faktor = faktorInput.value;
         markiereUngespeichert();
@@ -1264,7 +1246,6 @@
         body: JSON.stringify({
           blocks: zustand.module,
           payment: {
-            tariftypLabel: ermittleTariftypLabel(),
             faktor: alsZahlOderNull(zustand.payment.faktor),
             kostenProTransaktion: alsZahlOderNull(zustand.payment.kostenProTransaktion)
           },
