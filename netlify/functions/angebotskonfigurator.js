@@ -111,6 +111,7 @@ async function loeseTicketAuf(ticketNummer) {
 
   return {
     partyId: ticket.partyId,
+    ticketId: ticket.id,
     ticketNummer: ticket.ticketNumber,
     ticketBetreff: ticket.subject || null,
     kunde: party.company,
@@ -238,10 +239,11 @@ function blockAusParty(party, blockName) {
   return refs.map((r) => r.entityId);
 }
 
-async function handleGet(partyId) {
-  const [katalog, party] = await Promise.all([
+async function handleGet(partyId, ticketId) {
+  const [katalog, party, ticket] = await Promise.all([
     ladeKatalog(),
-    weclapp(`/party/id/${partyId}`)
+    weclapp(`/party/id/${partyId}`),
+    ticketId ? weclapp(`/ticket/id/${ticketId}`).catch(() => null) : Promise.resolve(null)
   ]);
 
   const katalogById = new Map(katalog.map((k) => [k.articleId, k]));
@@ -295,12 +297,28 @@ async function handleGet(partyId) {
 
   const payment = await ladePayment(party);
 
+  // Ticket-Info nur, wenn eine ticketId mitgegeben wurde (z.B. aus der
+  // Ticketsuche oder künftig direkt aus Leadstarts Link). Ohne ticketId
+  // bleibt dieser Teil einfach leer - kein Pflichtbestandteil.
+  let ticketInfo = null;
+  if (ticket) {
+    const kontakt = ticket.contactId
+      ? await weclapp(`/party/id/${ticket.contactId}`).catch(() => null)
+      : null;
+    ticketInfo = {
+      beschreibung: ticket.description || null,
+      ansprechpartner: kontakt ? [kontakt.firstName, kontakt.lastName].filter(Boolean).join(' ') : null,
+      telefon: kontakt ? kontakt.phone : null
+    };
+  }
+
   return {
     party: { id: party.id, company: party.company },
     katalog,
     blocks: { ...blocksMitDetails, dienstleistung: dienstleistungStandard },
     zeitaufwandSumme,
-    payment
+    payment,
+    ticket: ticketInfo
   };
 }
 
@@ -402,7 +420,7 @@ exports.handler = async (event) => {
     }
 
     if (event.httpMethod === 'GET') {
-      const daten = await handleGet(partyId);
+      const daten = await handleGet(partyId, params.ticketId);
       return { statusCode: 200, headers, body: JSON.stringify(daten) };
     }
 
