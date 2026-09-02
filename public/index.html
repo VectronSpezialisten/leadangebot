@@ -301,6 +301,31 @@
     <div class="error-msg" id="loginError"></div>
   </div>
 
+  <!-- Ticketsuche: Einstiegspunkt in den Konfigurator - ein Angebot bezieht sich
+       immer zwingend auf ein Ticket, aus dem sich Kunde und Ansprechpartner ergeben. -->
+  <div id="ticketSucheBox" style="display:none;">
+    <label class="first-in-block" for="ticketNummerInput">Ticketnummer</label>
+    <input type="text" id="ticketNummerInput" placeholder="z.B. TB12345" autocomplete="off">
+    <button id="ticketSuchenBtn">Suchen</button>
+    <div class="error-msg" id="ticketSucheError"></div>
+
+    <div id="ticketBestaetigung" style="display:none; margin-top:20px;">
+      <div class="payment-zeile">
+        <span class="payment-label">Betreff</span>
+        <span class="payment-wert" id="ticketBestaetigungBetreff"></span>
+      </div>
+      <div class="payment-zeile">
+        <span class="payment-label">Kunde</span>
+        <span class="payment-wert" id="ticketBestaetigungKunde"></span>
+      </div>
+      <div class="payment-zeile">
+        <span class="payment-label">Ansprechpartner</span>
+        <span class="payment-wert" id="ticketBestaetigungAnsprechpartner"></span>
+      </div>
+      <button id="ticketWeiterBtn">Weiter</button>
+    </div>
+  </div>
+
   <!-- App-Bereich, erscheint erst nach erfolgreichem Login -->
   <div id="appContent">
     <div id="topBar">
@@ -407,6 +432,7 @@
   const ALLE_BLOCK_NAMEN = [...MODUL_NAMEN, "dienstleistung"];
 
   const loginBox = document.getElementById("loginBox");
+  const ticketSucheBox = document.getElementById("ticketSucheBox");
   const appContent = document.getElementById("appContent");
   const topBar = document.getElementById("topBar");
   const loginError = document.getElementById("loginError");
@@ -414,6 +440,7 @@
 
   const zustand = {
     partyId: null,
+    gefundenePartyId: null,
     katalog: [],
     module: { kostenpflichtig: [], enthalten: [], kauf: [], vorhanden: [], dienstleistung: [] },
     ausgewaehlteArtikelId: { kostenpflichtig: null, enthalten: null, kauf: null, vorhanden: null, dienstleistung: null },
@@ -435,6 +462,7 @@
 
   function zeigeApp(email) {
     loginBox.style.display = "none";
+    ticketSucheBox.style.display = "none";
     appContent.style.display = "block";
     topBar.style.display = "flex";
     userEmailDisplay.textContent = email;
@@ -442,6 +470,14 @@
 
   function zeigeLogin() {
     loginBox.style.display = "block";
+    ticketSucheBox.style.display = "none";
+    appContent.style.display = "none";
+    topBar.style.display = "none";
+  }
+
+  function zeigeTicketSuche() {
+    loginBox.style.display = "none";
+    ticketSucheBox.style.display = "block";
     appContent.style.display = "none";
     topBar.style.display = "none";
   }
@@ -466,6 +502,24 @@
       throw new Error("Nicht autorisiert");
     }
     if (!response.ok) throw new Error(`Laden fehlgeschlagen (${response.status})`);
+    return response.json();
+  }
+
+  async function sucheTicket(ticketNummer, zugang) {
+    const url = `${FUNCTION_URL}?ticketnummer=${encodeURIComponent(ticketNummer)}&email=${encodeURIComponent(zugang.email)}&pw=${encodeURIComponent(zugang.passwort)}`;
+    const response = await fetch(url);
+
+    if (response.status === 401) {
+      clearZugang();
+      zeigeLogin();
+      loginError.textContent = "Anmeldung ungültig. Bitte erneut anmelden.";
+      loginError.style.display = "block";
+      throw new Error("Nicht autorisiert");
+    }
+    if (!response.ok) {
+      const fehlerDaten = await response.json().catch(() => ({}));
+      throw new Error(fehlerDaten.fehler || `Fehler (${response.status})`);
+    }
     return response.json();
   }
 
@@ -846,11 +900,6 @@
     const params = new URLSearchParams(window.location.search);
     const partyId = params.get("partyId");
 
-    if (!partyId) {
-      document.body.innerHTML = '<div class="card"><h1>Angebotskonfigurator</h1><p class="subtitle">Kein partyId in der URL angegeben.</p></div>';
-      return;
-    }
-
     // Kommt der Aufruf mit email/pw in der URL (Link aus Leadstarts Erfolgsblock),
     // wird direkt angemeldet und die Zugangsdaten sofort aus der sichtbaren URL
     // entfernt - sie sollen nicht laenger als noetig in der Adresszeile stehen.
@@ -859,13 +908,24 @@
 
     if (urlEmail && urlPasswort) {
       setZugang(urlEmail, urlPasswort);
-      const bereinigteUrl = `${window.location.pathname}?partyId=${encodeURIComponent(partyId)}`;
+      const bereinigteUrl = partyId
+        ? `${window.location.pathname}?partyId=${encodeURIComponent(partyId)}`
+        : window.location.pathname;
       window.history.replaceState({}, "", bereinigteUrl);
     }
 
     const bestehenderZugang = getZugang();
-    if (bestehenderZugang) {
-      await starteApp(partyId, bestehenderZugang);
+
+    if (partyId) {
+      // Direkter Einstieg mit bekannter partyId (z.B. aus Leadstart) - wie bisher.
+      if (bestehenderZugang) {
+        await starteApp(partyId, bestehenderZugang);
+      } else {
+        zeigeLogin();
+      }
+    } else if (bestehenderZugang) {
+      // Kein partyId, aber schon angemeldet -> direkt zur Ticketsuche.
+      zeigeTicketSuche();
     } else {
       zeigeLogin();
     }
@@ -883,16 +943,23 @@
       loginError.style.display = "none";
       const zugangVersuch = { email, passwort };
 
-      try {
-        await ladeDaten(partyId, zugangVersuch);
-        setZugang(email, passwort);
-        await starteApp(partyId, zugangVersuch);
-      } catch (err) {
-        // ladeDaten hat bei 401 bereits loginError gesetzt; bei anderen Fehlern hier ergaenzen.
-        if (err.message !== "Nicht autorisiert") {
-          loginError.textContent = err.message;
-          loginError.style.display = "block";
+      if (partyId) {
+        try {
+          await ladeDaten(partyId, zugangVersuch);
+          setZugang(email, passwort);
+          await starteApp(partyId, zugangVersuch);
+        } catch (err) {
+          if (err.message !== "Nicht autorisiert") {
+            loginError.textContent = err.message;
+            loginError.style.display = "block";
+          }
         }
+      } else {
+        // Ohne partyId gibt es (noch) keinen reinen Verifizierungs-Aufruf -
+        // die eigentliche Prüfung der Zugangsdaten passiert beim ersten
+        // Ticketsuche-Aufruf (401 dort führt zurück zum Login, siehe sucheTicket).
+        setZugang(email, passwort);
+        zeigeTicketSuche();
       }
     });
 
@@ -901,6 +968,42 @@
       document.getElementById("loginEmail").value = "";
       document.getElementById("loginPasswort").value = "";
       zeigeLogin();
+    });
+
+    document.getElementById("ticketSuchenBtn").addEventListener("click", async () => {
+      const ticketNummer = document.getElementById("ticketNummerInput").value.trim();
+      const ticketSucheError = document.getElementById("ticketSucheError");
+      const ticketBestaetigung = document.getElementById("ticketBestaetigung");
+      ticketSucheError.style.display = "none";
+      ticketBestaetigung.style.display = "none";
+
+      if (!ticketNummer) return;
+
+      const zugang = getZugang();
+      if (!zugang) { zeigeLogin(); return; }
+
+      try {
+        const daten = await sucheTicket(ticketNummer, zugang);
+        zustand.gefundenePartyId = daten.partyId;
+        document.getElementById("ticketBestaetigungBetreff").textContent = daten.ticketBetreff || "–";
+        document.getElementById("ticketBestaetigungKunde").textContent = daten.kunde || "–";
+        document.getElementById("ticketBestaetigungAnsprechpartner").textContent = daten.ansprechpartner || "–";
+        ticketBestaetigung.style.display = "block";
+      } catch (err) {
+        if (err.message !== "Nicht autorisiert") {
+          ticketSucheError.textContent = err.message;
+          ticketSucheError.style.display = "block";
+        }
+      }
+    });
+
+    document.getElementById("ticketWeiterBtn").addEventListener("click", async () => {
+      const zugang = getZugang();
+      if (!zugang || !zustand.gefundenePartyId) return;
+
+      const bereinigteUrl = `${window.location.pathname}?partyId=${encodeURIComponent(zustand.gefundenePartyId)}`;
+      window.history.replaceState({}, "", bereinigteUrl);
+      await starteApp(zustand.gefundenePartyId, zugang);
     });
 
     bindeHinzufuegenButtons();
