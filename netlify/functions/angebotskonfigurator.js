@@ -18,6 +18,15 @@
 // Konvention verwenden.
 const BASE_URL = `https://${process.env.WECLAPP_DOMAIN}/webapp/api/v2`;
 
+// Für Fehler, die dem Nutzer mit einem passenden Status (nicht immer 500)
+// angezeigt werden sollen, z.B. "Ticket nicht gefunden" -> 404.
+class HandledError extends Error {
+  constructor(statusCode, message) {
+    super(message);
+    this.statusCode = statusCode;
+  }
+}
+
 // Reihenfolge hier = Anzeige-Reihenfolge der Blöcke im Frontend.
 const BLOCK_ATTRIBUTE_IDS = {
   kostenpflichtig: '2544446',
@@ -73,6 +82,40 @@ function findeCustomAttribute(party, attributeDefinitionId) {
   return (party.customAttributes || []).find(
     (a) => a.attributeDefinitionId === attributeDefinitionId
   );
+}
+
+// Löst eine Ticketnummer zur internen partyId auf, inkl. Betreff und
+// Ansprechpartner - damit der Nutzer vor dem eigentlichen Laden sieht, ob er
+// am richtigen Ticket/Kunden ist. Kein Fallback auf Kundennummer mehr: ein
+// Angebot bezieht sich laut Vorgabe immer zwingend auf ein Ticket. Hat das
+// Ticket keine verknüpfte Firma, kann folgerichtig kein Angebot erstellt werden.
+async function loeseTicketAuf(ticketNummer) {
+  const ticketTreffer = await weclapp(
+    `/ticket?ticketNumber-eq=${encodeURIComponent(ticketNummer)}`
+  );
+  const ticket = (ticketTreffer.result || [])[0];
+
+  if (!ticket) {
+    throw new HandledError(404, `Kein Ticket mit der Nummer "${ticketNummer}" gefunden.`);
+  }
+  if (!ticket.partyId) {
+    throw new HandledError(422, `Ticket "${ticketNummer}" hat keine verknüpfte Firma - Angebot nicht möglich.`);
+  }
+
+  const [party, kontakt] = await Promise.all([
+    weclapp(`/party/id/${ticket.partyId}`),
+    ticket.contactId
+      ? weclapp(`/party/id/${ticket.contactId}`).catch(() => null)
+      : Promise.resolve(null)
+  ]);
+
+  return {
+    partyId: ticket.partyId,
+    ticketNummer: ticket.ticketNumber,
+    ticketBetreff: ticket.subject || null,
+    kunde: party.company,
+    ansprechpartner: kontakt ? [kontakt.firstName, kontakt.lastName].filter(Boolean).join(' ') : null
+  };
 }
 
 async function ladePayment(party) {
@@ -316,18 +359,8 @@ exports.handler = async (event) => {
     return { statusCode: 204, headers, body: '' };
   }
 
-  const partyId = event.queryStringParameters && event.queryStringParameters.partyId;
-  if (!partyId) {
-    return {
-      statusCode: 400,
-      headers,
-      body: JSON.stringify({ fehler: 'Query-Parameter partyId fehlt.' })
-    };
-  }
-
-  // Zugangsdaten kommen bei GET als Query-Parameter (aus dem Link von Leadstart
-  // bzw. der eigenen Login-Box), bei PUT zusätzlich aus dem Body, damit das
-  // Speichern nicht durch eine unvollständige Query-String-Länge riskiert wird.
+  // Auth-Daten kommen bei GET als Query-Parameter, bei PUT zusätzlich aus dem
+  // Body (damit Speichern nicht an einer zu langen Query-String-Grenze scheitert).
   let email;
   let passwort;
 
@@ -349,7 +382,25 @@ exports.handler = async (event) => {
     };
   }
 
+  const params = event.queryStringParameters || {};
+
   try {
+    // Einstieg über Ticketnummer: löst zu partyId auf, liefert Betreff/Kunde/
+    // Ansprechpartner zur Bestätigung zurück - lädt NOCH NICHT den ganzen Katalog.
+    if (event.httpMethod === 'GET' && params.ticketnummer) {
+      const daten = await loeseTicketAuf(params.ticketnummer);
+      return { statusCode: 200, headers, body: JSON.stringify(daten) };
+    }
+
+    const partyId = params.partyId;
+    if (!partyId) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ fehler: 'Query-Parameter partyId oder ticketnummer fehlt.' })
+      };
+    }
+
     if (event.httpMethod === 'GET') {
       const daten = await handleGet(partyId);
       return { statusCode: 200, headers, body: JSON.stringify(daten) };
@@ -364,8 +415,9 @@ exports.handler = async (event) => {
     return { statusCode: 405, headers, body: JSON.stringify({ fehler: 'Methode nicht erlaubt.' }) };
   } catch (error) {
     console.error(error);
+    const statusCode = error instanceof HandledError ? error.statusCode : 500;
     return {
-      statusCode: 500,
+      statusCode,
       headers,
       body: JSON.stringify({ fehler: error.message })
     };
