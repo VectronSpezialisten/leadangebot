@@ -384,9 +384,9 @@ function generiereAngebotsHtml(daten) {
     </td></tr>
   `).join('')}
 
-  ${daten.notiz ? `
+  ${daten.hinweise ? `
   <tr><td style="padding-top:20px;font-size:13px;line-height:1.5;color:#171717;">
-    ${daten.notiz}
+    ${daten.hinweise}
   </td></tr>` : ''}
 
 </table>
@@ -625,7 +625,7 @@ exports.handler = async (event) => {
         party: { id: party.id, company: party.company },
         blocks: body.blocks,
         payment: body.payment,
-        notiz: body.notiz || null,
+        hinweise: body.hinweise || null,
         ticket: ticketInfo
       };
       const html = generiereAngebotsHtml(daten);
@@ -656,7 +656,7 @@ exports.handler = async (event) => {
         dienstleistung: body.dienstleistung,
         texte: body.texte
       });
-      daten.notiz = body.notiz || null;
+      daten.hinweise = body.hinweise || null;
 
       if (!daten.ticket) {
         throw new HandledError(422, 'Ohne verknüpftes Ticket ist keine Vorschau/Versand möglich.');
