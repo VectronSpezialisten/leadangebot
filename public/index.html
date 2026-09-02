@@ -53,6 +53,14 @@
     border-radius: 12px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
     padding: 24px;
+    transition: width 0.15s ease;
+  }
+  .info-panel--breit {
+    width: 560px;
+  }
+  #infoPanelInhalt {
+    max-height: calc(100vh - 140px);
+    overflow-y: auto;
   }
   @media (min-width: 960px) {
     .info-panel { display: block; }
@@ -385,7 +393,8 @@
       <button id="logoutBtn">Abmelden</button>
     </div>
 
-    <p class="subtitle" id="partyName" style="margin-bottom:8px;">Kunde wird geladen …</p>
+    <p class="subtitle" id="partyName" style="margin-bottom:4px;">Kunde wird geladen …</p>
+    <p class="subtitle" id="kontaktZeile" style="margin-bottom:20px; font-size:13px;"></p>
 
     <div class="block-heading">Modul kostenpflichtig</div>
     <div id="liste-kostenpflichtig"></div>
@@ -899,27 +908,39 @@
   }
 
   function renderInfoPanel(ticket) {
+    const panel = document.getElementById("infoPanel");
     const inhalt = document.getElementById("infoPanelInhalt");
+    const kontaktZeile = document.getElementById("kontaktZeile");
+
+    // Ansprechpartner + Telefon jetzt im festen Bereich direkt unter dem Betrieb,
+    // nicht mehr im Info-Panel (das zeigt nur noch die Ticket-Beschreibung).
+    if (ticket && (ticket.ansprechpartner || ticket.telefon)) {
+      const telefonHtml = ticket.telefon
+        ? `<a href="tel:${ticket.telefon.replace(/\s+/g, '')}">${ticket.telefon}</a>`
+        : '–';
+      kontaktZeile.innerHTML = `${ticket.ansprechpartner || '–'} · ${telefonHtml}`;
+    } else {
+      kontaktZeile.textContent = "";
+    }
 
     if (!ticket) {
       inhalt.innerHTML = '<p class="info-panel__leer">Kein Ticket verknüpft.</p>';
+      panel.classList.remove("info-panel--breit");
       return;
     }
 
     const beschreibungHtml = ticket.beschreibung || '<p>Keine Beschreibung hinterlegt.</p>';
-    const telefonHtml = ticket.telefon
-      ? `<a href="tel:${ticket.telefon.replace(/\s+/g, '')}">${ticket.telefon}</a>`
-      : '–';
+    inhalt.innerHTML = `<div class="info-panel__beschreibung">${beschreibungHtml}</div>`;
 
-    inhalt.innerHTML = `
-      <div class="info-panel__beschreibung">${beschreibungHtml}</div>
-      <div class="info-panel__kontakt">
-        <div class="info-panel__kontakt-label">Ansprechpartner</div>
-        <div>${ticket.ansprechpartner || '–'}</div>
-        <div class="info-panel__kontakt-label" style="margin-top:10px;">Telefon</div>
-        <div>${telefonHtml}</div>
-      </div>
-    `;
+    // Passt sich der Länge an: wenn der Inhalt höher ist als der verfügbare
+    // Platz (also gescrollt werden müsste), wird das Panel doppelt so breit -
+    // mehr Zeichen pro Zeile, dadurch insgesamt weniger Zeilen/Scroll-Höhe.
+    panel.classList.remove("info-panel--breit");
+    requestAnimationFrame(() => {
+      if (inhalt.scrollHeight > inhalt.clientHeight) {
+        panel.classList.add("info-panel--breit");
+      }
+    });
   }
 
   async function starteApp(partyId, zugang, ticketId) {
