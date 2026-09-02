@@ -38,6 +38,57 @@
     max-width: 560px;
     padding: 32px;
   }
+  .page-layout {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+  }
+  .info-panel {
+    display: none; /* Standard: aus - nur per Media Query im Desktop-Modus eingeblendet */
+    width: 280px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 32px;
+    background: var(--white);
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+    padding: 24px;
+  }
+  @media (min-width: 960px) {
+    .info-panel { display: block; }
+  }
+  .info-panel__title {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0 0 14px;
+  }
+  .info-panel__leer {
+    color: var(--gray-500);
+    font-size: 13px;
+    margin: 0;
+  }
+  .info-panel__beschreibung {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--gray-700);
+    margin-bottom: 20px;
+  }
+  .info-panel__beschreibung p:first-child { margin-top: 0; }
+  .info-panel__beschreibung p:last-child { margin-bottom: 0; }
+  .info-panel__kontakt {
+    border-top: 1px solid var(--gray-300);
+    padding-top: 14px;
+    font-size: 13px;
+  }
+  .info-panel__kontakt-label {
+    color: var(--gray-500);
+    margin-bottom: 2px;
+  }
+  .info-panel__kontakt a {
+    color: var(--gray-900);
+    text-decoration: none;
+  }
+  .info-panel__kontakt a:hover { text-decoration: underline; }
   h1 {
     font-size: 22px;
     margin: 0 0 4px;
@@ -285,6 +336,7 @@
 </head>
 <body>
 
+<div class="page-layout">
 <div class="card">
   <h1>Angebotskonfigurator</h1>
   <p class="subtitle">Module für ein Angebot zusammenstellen</p>
@@ -421,6 +473,17 @@
   </div>
 </div>
 
+<!-- Nur im Desktop-Modus sichtbar (siehe CSS media query) - im Smartphone-Modus
+     komplett ausgeblendet, damit auf schmalen Bildschirmen kein Platz verloren geht. -->
+<aside class="info-panel" id="infoPanel">
+  <h2 class="info-panel__title">Ticket-Info</h2>
+  <div id="infoPanelInhalt">
+    <p class="info-panel__leer">Kein Ticket verknüpft.</p>
+  </div>
+</aside>
+
+</div>
+
 <script>
   const FUNCTION_URL = "/.netlify/functions/angebotskonfigurator";
   const STORAGE_KEY = "leadstart_zugang"; // gleicher Key wie Leadstart - falls die
@@ -441,6 +504,7 @@
   const zustand = {
     partyId: null,
     gefundenePartyId: null,
+    gefundeneTicketId: null,
     katalog: [],
     module: { kostenpflichtig: [], enthalten: [], kauf: [], vorhanden: [], dienstleistung: [] },
     ausgewaehlteArtikelId: { kostenpflichtig: null, enthalten: null, kauf: null, vorhanden: null, dienstleistung: null },
@@ -490,8 +554,9 @@
     document.getElementById("speichernBtn").disabled = false;
   }
 
-  async function ladeDaten(partyId, zugang) {
-    const url = `${FUNCTION_URL}?partyId=${encodeURIComponent(partyId)}&email=${encodeURIComponent(zugang.email)}&pw=${encodeURIComponent(zugang.passwort)}`;
+  async function ladeDaten(partyId, zugang, ticketId) {
+    let url = `${FUNCTION_URL}?partyId=${encodeURIComponent(partyId)}&email=${encodeURIComponent(zugang.email)}&pw=${encodeURIComponent(zugang.passwort)}`;
+    if (ticketId) url += `&ticketId=${encodeURIComponent(ticketId)}`;
     const response = await fetch(url);
 
     if (response.status === 401) {
@@ -833,16 +898,41 @@
     el.style.display = "block";
   }
 
-  async function starteApp(partyId, zugang) {
+  function renderInfoPanel(ticket) {
+    const inhalt = document.getElementById("infoPanelInhalt");
+
+    if (!ticket) {
+      inhalt.innerHTML = '<p class="info-panel__leer">Kein Ticket verknüpft.</p>';
+      return;
+    }
+
+    const beschreibungHtml = ticket.beschreibung || '<p>Keine Beschreibung hinterlegt.</p>';
+    const telefonHtml = ticket.telefon
+      ? `<a href="tel:${ticket.telefon.replace(/\s+/g, '')}">${ticket.telefon}</a>`
+      : '–';
+
+    inhalt.innerHTML = `
+      <div class="info-panel__beschreibung">${beschreibungHtml}</div>
+      <div class="info-panel__kontakt">
+        <div class="info-panel__kontakt-label">Ansprechpartner</div>
+        <div>${ticket.ansprechpartner || '–'}</div>
+        <div class="info-panel__kontakt-label" style="margin-top:10px;">Telefon</div>
+        <div>${telefonHtml}</div>
+      </div>
+    `;
+  }
+
+  async function starteApp(partyId, zugang, ticketId) {
     zeigeApp(zugang.email);
 
     try {
-      const daten = await ladeDaten(partyId, zugang);
+      const daten = await ladeDaten(partyId, zugang, ticketId);
       zustand.partyId = partyId;
       zustand.katalog = daten.katalog;
       zustand.module = daten.blocks;
 
       document.getElementById("partyName").textContent = daten.party.company;
+      renderInfoPanel(daten.ticket);
       for (const modulName of ALLE_BLOCK_NAMEN) {
         initialisiereSuche(modulName);
       }
@@ -899,6 +989,7 @@
   async function init() {
     const params = new URLSearchParams(window.location.search);
     const partyId = params.get("partyId");
+    const ticketIdAusUrl = params.get("ticketId");
 
     // Kommt der Aufruf mit email/pw in der URL (Link aus Leadstarts Erfolgsblock),
     // wird direkt angemeldet und die Zugangsdaten sofort aus der sichtbaren URL
@@ -908,9 +999,11 @@
 
     if (urlEmail && urlPasswort) {
       setZugang(urlEmail, urlPasswort);
-      const bereinigteUrl = partyId
-        ? `${window.location.pathname}?partyId=${encodeURIComponent(partyId)}`
-        : window.location.pathname;
+      let bereinigteUrl = window.location.pathname;
+      if (partyId) {
+        bereinigteUrl += `?partyId=${encodeURIComponent(partyId)}`;
+        if (ticketIdAusUrl) bereinigteUrl += `&ticketId=${encodeURIComponent(ticketIdAusUrl)}`;
+      }
       window.history.replaceState({}, "", bereinigteUrl);
     }
 
@@ -919,7 +1012,7 @@
     if (partyId) {
       // Direkter Einstieg mit bekannter partyId (z.B. aus Leadstart) - wie bisher.
       if (bestehenderZugang) {
-        await starteApp(partyId, bestehenderZugang);
+        await starteApp(partyId, bestehenderZugang, ticketIdAusUrl);
       } else {
         zeigeLogin();
       }
@@ -945,9 +1038,9 @@
 
       if (partyId) {
         try {
-          await ladeDaten(partyId, zugangVersuch);
+          await ladeDaten(partyId, zugangVersuch, ticketIdAusUrl);
           setZugang(email, passwort);
-          await starteApp(partyId, zugangVersuch);
+          await starteApp(partyId, zugangVersuch, ticketIdAusUrl);
         } catch (err) {
           if (err.message !== "Nicht autorisiert") {
             loginError.textContent = err.message;
@@ -985,6 +1078,7 @@
       try {
         const daten = await sucheTicket(ticketNummer, zugang);
         zustand.gefundenePartyId = daten.partyId;
+        zustand.gefundeneTicketId = daten.ticketId;
         document.getElementById("ticketBestaetigungBetreff").textContent = daten.ticketBetreff || "–";
         document.getElementById("ticketBestaetigungKunde").textContent = daten.kunde || "–";
         document.getElementById("ticketBestaetigungAnsprechpartner").textContent = daten.ansprechpartner || "–";
@@ -1001,9 +1095,12 @@
       const zugang = getZugang();
       if (!zugang || !zustand.gefundenePartyId) return;
 
-      const bereinigteUrl = `${window.location.pathname}?partyId=${encodeURIComponent(zustand.gefundenePartyId)}`;
+      let bereinigteUrl = `${window.location.pathname}?partyId=${encodeURIComponent(zustand.gefundenePartyId)}`;
+      if (zustand.gefundeneTicketId) {
+        bereinigteUrl += `&ticketId=${encodeURIComponent(zustand.gefundeneTicketId)}`;
+      }
       window.history.replaceState({}, "", bereinigteUrl);
-      await starteApp(zustand.gefundenePartyId, zugang);
+      await starteApp(zustand.gefundenePartyId, zugang, zustand.gefundeneTicketId);
     });
 
     bindeHinzufuegenButtons();
