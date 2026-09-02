@@ -479,6 +479,14 @@
     <div class="error-msg" id="ladeFehler"></div>
 
     <button type="button" id="speichernBtn" disabled>Speichern</button>
+
+    <div id="vorschauBereich" style="display:none; margin-top:24px; padding-top:20px; border-top:1px solid var(--gray-300);">
+      <div class="block-heading" style="margin-top:0;">Angebots-Vorschau</div>
+      <iframe id="vorschauFrame" style="width:100%; height:500px; border:1px solid var(--gray-300); border-radius:8px;"></iframe>
+      <button type="button" id="sendenBtn" style="margin-top:12px;">Angebot senden</button>
+      <div class="error-msg" id="sendenFehler"></div>
+      <p class="info-panel__leer" id="sendenErfolg" style="display:none; color:var(--gray-700);">Angebot wurde versendet.</p>
+    </div>
   </div>
 </div>
 
@@ -512,6 +520,7 @@
 
   const zustand = {
     partyId: null,
+    ticketId: null,
     gefundenePartyId: null,
     gefundeneTicketId: null,
     katalog: [],
@@ -949,6 +958,7 @@
     try {
       const daten = await ladeDaten(partyId, zugang, ticketId);
       zustand.partyId = partyId;
+      zustand.ticketId = daten.ticket ? daten.ticket.ticketId : null;
       zustand.katalog = daten.katalog;
       zustand.module = daten.blocks;
 
@@ -1126,6 +1136,23 @@
 
     bindeHinzufuegenButtons();
 
+    async function ladeVorschau(zugang) {
+      if (!zustand.ticketId) return;
+
+      const url = `${FUNCTION_URL}?partyId=${encodeURIComponent(zustand.partyId)}&ticketId=${encodeURIComponent(zustand.ticketId)}&aktion=vorschau&email=${encodeURIComponent(zugang.email)}&pw=${encodeURIComponent(zugang.passwort)}`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        const fehlerDaten = await response.json().catch(() => ({}));
+        throw new Error(fehlerDaten.fehler || `Vorschau fehlgeschlagen (${response.status})`);
+      }
+      const daten = await response.json();
+
+      document.getElementById("vorschauBereich").style.display = "block";
+      document.getElementById("vorschauFrame").srcdoc = daten.html;
+      zustand.vorschauBetreff = daten.betreff;
+      zustand.vorschauEmpfaenger = daten.empfaengerEmail;
+    }
+
     document.getElementById("speichernBtn").addEventListener("click", async () => {
       const btn = document.getElementById("speichernBtn");
       const zugang = getZugang();
@@ -1137,12 +1164,48 @@
         await speichereDaten(zustand.partyId, zugang);
         btn.textContent = "Speichern";
         document.getElementById("ladeFehler").style.display = "none";
+        await ladeVorschau(zugang);
       } catch (err) {
         btn.textContent = "Speichern";
         btn.disabled = false;
         if (err.message !== "Nicht autorisiert") {
           zeigeLadeFehler(err.message);
         }
+      }
+    });
+
+    document.getElementById("sendenBtn").addEventListener("click", async () => {
+      const sendenBtn = document.getElementById("sendenBtn");
+      const sendenFehler = document.getElementById("sendenFehler");
+      const sendenErfolg = document.getElementById("sendenErfolg");
+      const zugang = getZugang();
+      if (!zugang) { zeigeLogin(); return; }
+
+      sendenFehler.style.display = "none";
+      sendenErfolg.style.display = "none";
+      sendenBtn.disabled = true;
+      sendenBtn.textContent = "Sendet …";
+
+      try {
+        const url = `${FUNCTION_URL}?partyId=${encodeURIComponent(zustand.partyId)}&ticketId=${encodeURIComponent(zustand.ticketId)}&aktion=senden`;
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: zugang.email, passwort: zugang.passwort })
+        });
+
+        if (!response.ok) {
+          const fehlerDaten = await response.json().catch(() => ({}));
+          throw new Error(fehlerDaten.fehler || `Senden fehlgeschlagen (${response.status})`);
+        }
+
+        sendenErfolg.style.display = "block";
+        sendenBtn.textContent = "Angebot senden";
+      } catch (err) {
+        sendenBtn.textContent = "Angebot senden";
+        sendenBtn.disabled = false;
+        sendenFehler.textContent = err.message;
+        sendenFehler.style.display = "block";
       }
     });
   }
