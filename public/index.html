@@ -454,18 +454,6 @@
     </div>
     <div class="modul-summe" id="summe-dienstleistung">0,00 €</div>
 
-    <div class="block-heading">Texte</div>
-    <div id="liste-texte"></div>
-    <div class="modul-footer">
-      <div class="such-auswahl">
-        <input type="text" id="suche-texte" placeholder="Textbaustein suchen …" autocomplete="off">
-        <div class="such-ergebnisse" id="ergebnisse-texte"></div>
-      </div>
-      <button type="button" class="btn-auto" id="add-texte">+ Hinzufügen</button>
-    </div>
-    <label for="notizFeld" style="margin-top:16px;">Notiz (spezielle Absprachen)</label>
-    <textarea id="notizFeld" rows="3" placeholder="Wird sichtbar Teil des Angebots, falls ausgefüllt …" style="width:100%; padding:10px 12px; border:1px solid var(--gray-300); border-radius:8px; font-family:inherit; font-size:14px; resize:vertical;"></textarea>
-
     <div class="block-heading">Payment</div>
     <div class="payment-zeile">
       <span class="payment-label">Tariftyp</span>
@@ -489,6 +477,18 @@
       <span class="payment-label">Gesamt einmalig</span>
       <span class="payment-wert" id="abschluss-einmalig">0,00 €</span>
     </div>
+
+    <div class="block-heading">Texte</div>
+    <div id="liste-texte"></div>
+    <div class="modul-footer">
+      <div class="such-auswahl">
+        <input type="text" id="suche-texte" placeholder="Textbaustein suchen …" autocomplete="off">
+        <div class="such-ergebnisse" id="ergebnisse-texte"></div>
+      </div>
+      <button type="button" class="btn-auto" id="add-texte">+ Hinzufügen</button>
+    </div>
+    <label for="hinweiseFeld" style="margin-top:16px;">Hinweise (spezielle Absprachen)</label>
+    <textarea id="hinweiseFeld" rows="3" placeholder="Wird sichtbar Teil des Angebots, falls ausgefüllt …" style="width:100%; padding:10px 12px; border:1px solid var(--gray-300); border-radius:8px; font-family:inherit; font-size:14px; resize:vertical;"></textarea>
 
     <div class="error-msg" id="ladeFehler"></div>
 
@@ -545,7 +545,7 @@
     module: { kostenpflichtig: [], enthalten: [], kauf: [], vorhanden: [], dienstleistung: [], texte: [] },
     ausgewaehlteArtikelId: { kostenpflichtig: null, enthalten: null, kauf: null, vorhanden: null, dienstleistung: null, texte: null },
     payment: { tariftypId: null, faktor: null, kostenProTransaktion: null },
-    notiz: ""
+    hinweise: ""
   };
 
   function getZugang() {
@@ -1028,8 +1028,8 @@
       zustand.ticketId = daten.ticket ? daten.ticket.ticketId : null;
       zustand.katalog = daten.katalog;
       zustand.module = daten.blocks;
-      zustand.notiz = "";
-      document.getElementById("notizFeld").value = "";
+      zustand.hinweise = "";
+      document.getElementById("hinweiseFeld").value = "";
 
       document.getElementById("partyName").textContent = daten.party.company;
       renderInfoPanel(daten.ticket);
@@ -1223,8 +1223,8 @@
 
     bindeHinzufuegenButtons();
 
-    document.getElementById("notizFeld").addEventListener("input", (e) => {
-      zustand.notiz = e.target.value;
+    document.getElementById("hinweiseFeld").addEventListener("input", (e) => {
+      zustand.hinweise = e.target.value;
       markiereUngespeichert();
     });
 
@@ -1260,7 +1260,7 @@
             faktor: alsZahlOderNull(zustand.payment.faktor),
             kostenProTransaktion: alsZahlOderNull(zustand.payment.kostenProTransaktion)
           },
-          notiz: zustand.notiz,
+          hinweise: zustand.hinweise,
           email: zugang.email,
           passwort: zugang.passwort
         })
@@ -1330,7 +1330,7 @@
             payment: bauePaymentPayload(),
             dienstleistung: zustand.module.dienstleistung,
             texte: zustand.module.texte,
-            notiz: zustand.notiz,
+            hinweise: zustand.hinweise,
             email: zugang.email,
             passwort: zugang.passwort
           })
