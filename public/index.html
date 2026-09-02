@@ -98,6 +98,13 @@
     text-decoration: none;
   }
   .info-panel__kontakt a:hover { text-decoration: underline; }
+  .info-panel__kommentar {
+    border-top: 1px solid var(--gray-300);
+    padding-top: 14px;
+    margin-top: 20px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
   h1 {
     font-size: 22px;
     margin: 0 0 4px;
@@ -656,6 +663,15 @@
   }
 
   function fuegeZuModulHinzu(modulName, artikel) {
+    // Tariftyp ist eine Einzelauswahl - eine neue Auswahl ersetzt die alte,
+    // statt sich dazuzugesellen.
+    if (modulName === "tariftyp") {
+      zustand.module.tariftyp = [artikel];
+      markiereUngespeichert();
+      renderAlles();
+      return;
+    }
+
     const bereitsDrin = zustand.module[modulName].some((a) => a.articleId === artikel.articleId);
     if (bereitsDrin) return;
 
@@ -1013,7 +1029,13 @@
     }
 
     const beschreibungHtml = ticket.beschreibung || '<p>Keine Beschreibung hinterlegt.</p>';
-    inhalt.innerHTML = `<div class="info-panel__beschreibung">${beschreibungHtml}</div>`;
+    const kommentarHtml = ticket.letzterKommentar
+      ? `<div class="info-panel__kommentar">
+           <div class="info-panel__kontakt-label">Letzter Kommentar</div>
+           <div>${ticket.letzterKommentar}</div>
+         </div>`
+      : '';
+    inhalt.innerHTML = `<div class="info-panel__beschreibung">${beschreibungHtml}</div>${kommentarHtml}`;
 
     // Passt sich der Länge an: wenn der Inhalt höher ist als der verfügbare
     // Platz (also gescrollt werden müsste), wird das Panel doppelt so breit -
