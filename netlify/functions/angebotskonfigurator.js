@@ -308,7 +308,7 @@ async function handleGet(partyId, ticketId) {
     ticketInfo = {
       beschreibung: ticket.description || null,
       ansprechpartner: kontakt ? [kontakt.firstName, kontakt.lastName].filter(Boolean).join(' ') : null,
-      telefon: kontakt ? kontakt.phone : null
+      telefon: kontakt ? kontakt.mobilePhone1 : null
     };
   }
 
