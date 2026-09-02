@@ -310,10 +310,24 @@ function generiereAngebotsHtml(daten) {
 
   return `<!DOCTYPE html>
 <html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  /* Fluid statt fest 600px breit - verhindert horizontales Scrollen auf
+     schmalen Bildschirmen (Smartphone-Mailclients, aber auch die Vorschau
+     hier im Konfigurator). Auf Desktop bleibt es optisch bei ca. 600px. */
+  @media only screen and (max-width: 620px) {
+    .email-padding { padding: 20px !important; }
+  }
+</style>
+</head>
 <body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,Arial,sans-serif;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:24px 0;">
 <tr><td align="center">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;padding:32px;color:#171717;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%; max-width:600px; background:#ffffff;border-radius:8px;color:#171717;">
+<tr><td class="email-padding" style="padding:32px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
 
   <!-- Kopf -->
   <tr><td style="font-size:15px;line-height:1.5;padding-bottom:16px;">
@@ -379,6 +393,8 @@ function generiereAngebotsHtml(daten) {
 </table>
 </td></tr>
 </table>
+</td></tr>
+</table>
 </body>
 </html>`;
 }
@@ -387,17 +403,39 @@ function generiereAngebotsHtml(daten) {
 // für den E-Mail-Kopf/Empfänger gebraucht werden. Eigenständig, damit sowohl
 // handleGet (Editor laden) als auch die Vorschau (ohne Speichern) das nutzen
 // können, ohne Logik zu duplizieren.
+// Letzten Kommentar eines Tickets holen - für die Info-Panel-Anzeige beim
+// direkten Wechsel Leadstart -> Angebotskonfigurator (Leadstart schreibt die
+// erste Notiz als Kommentar, nicht in die Ticket-Beschreibung). Robust: falls
+// der entityId/entityName-Filter doch nicht wie erwartet greift, bleibt das
+// Feld einfach leer statt die ganze Seite crashen zu lassen.
+async function ladeLetztenKommentar(ticketId) {
+  if (!ticketId) return null;
+  try {
+    const response = await weclapp(
+      `/comment?entityName=ticket&entityId=${encodeURIComponent(ticketId)}&sort=-createdDate&pageSize=1`
+    );
+    const letzter = (response.result || [])[0];
+    return letzter ? letzter.comment : null;
+  } catch {
+    return null;
+  }
+}
+
 async function loeseTicketInfo(ticket) {
   if (!ticket) return null;
 
-  const kontakt = ticket.contactId
-    ? await weclapp(`/party/id/${ticket.contactId}`).catch(() => null)
-    : null;
+  const [kontakt, letzterKommentar] = await Promise.all([
+    ticket.contactId
+      ? weclapp(`/party/id/${ticket.contactId}`).catch(() => null)
+      : Promise.resolve(null),
+    ladeLetztenKommentar(ticket.id)
+  ]);
 
   return {
     ticketId: ticket.id,
     betreff: ticket.subject || null,
     beschreibung: ticket.description || null,
+    letzterKommentar,
     ansprechpartner: kontakt ? [kontakt.firstName, kontakt.lastName].filter(Boolean).join(' ') : null,
     ansprechpartnerVorname: kontakt ? kontakt.firstName : null,
     telefon: kontakt ? kontakt.mobilePhone1 : null,
