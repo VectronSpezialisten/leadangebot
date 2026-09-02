@@ -49,8 +49,15 @@ const KATALOG_ZUORDNUNG_WERT_ZU_BLOCK = {
   '2567325': 'enthalten',
   '2567326': 'kauf',
   '2567327': 'vorhanden',
-  '2568640': 'dienstleistung'
+  '2568640': 'dienstleistung',
+  '2571192': 'texte'
 };
+
+// Diese zwei Text-Artikel werden bei jedem Laden als Standardbestückung des
+// Texte-Blocks vorgeschlagen. Impressum ist ZWINGEND und im Frontend nicht
+// entfernbar (siehe TEXTE_PFLICHT_ARTIKELNUMMERN), AGB ist nur Vorschlag.
+const STANDARD_TEXTE_ARTIKELNUMMERN = ['imp', 'agb'];
+const TEXTE_PFLICHT_ARTIKELNUMMERN = ['imp'];
 
 // "Zeitaufwand gesamt" - Custom Attribute auf Verkaufsartikeln (nicht auf den
 // Dienstleistungsartikeln selbst!), von Karsten manuell gepflegt. Wird pro
@@ -126,11 +133,12 @@ async function ladePayment(party) {
 
   // Tariftyp-Definition immer laden (nicht nur bei vorhandener Auswahl), damit das
   // Frontend die komplette Optionsliste für ein editierbares Auswahlfeld bekommt.
-  const tariftypDefinition = await weclapp(`/customAttributeDefinition/id/${TARIFTYP_ATTRIBUTE_ID}`);
-  const tariftypOptionen = (tariftypDefinition.selectableValues || []).map((w) => ({
-    id: w.id,
-    value: w.value
-  }));
+  // Robust gegen ein gelöschtes/umbenanntes Feld (z.B. während der Umstellung auf
+  // "Modul Tariftyp") - dann bleibt die Optionsliste einfach leer statt zu crashen.
+  const tariftypDefinition = await weclapp(`/customAttributeDefinition/id/${TARIFTYP_ATTRIBUTE_ID}`).catch(() => null);
+  const tariftypOptionen = tariftypDefinition
+    ? (tariftypDefinition.selectableValues || []).map((w) => ({ id: w.id, value: w.value }))
+    : [];
 
   return {
     tariftyp: {
@@ -219,6 +227,7 @@ function katalogEintragAus(article) {
     name: article.name,
     price: ermittlePreis(article),
     zeitaufwand: ermittleZeitaufwand(article),
+    beschreibung: article.description || null,
     erlaubteBloecke: ermittleErlaubteBloecke(article)
   };
 }
@@ -361,14 +370,24 @@ function generiereAngebotsHtml(daten) {
     </table>
   </td></tr>
 
-  <!-- Fuss: AGB + Signatur (Platzhalter - bitte mit echtem Text ersetzen) -->
-  <tr><td style="padding-top:28px;border-top:1px solid #d4d4d4;margin-top:24px;font-size:11px;line-height:1.5;color:#737373;">
-    Es gelten unsere Allgemeinen Geschäftsbedingungen (AGB-Platzhaltertext - bitte durch echten Text ersetzen).
-  </td></tr>
-  <tr><td style="padding-top:16px;font-size:13px;line-height:1.5;color:#171717;">
+  <!-- Fuss: Signatur (Platzhalter - bitte mit echtem Text ersetzen, sobald geklärt) -->
+  <tr><td style="padding-top:28px;border-top:1px solid #d4d4d4;font-size:13px;line-height:1.5;color:#171717;">
     Mit freundlichen Grüßen<br>
     Ihr Team von Thiede &amp; Brauer GmbH – Kasse-Stimmt
   </td></tr>
+
+  <!-- Texte-Block: AGB/Impressum/weitere Rechtstexte, kommt aus den Artikellangtexten
+       der im Texte-Block ausgewählten Artikel - unterhalb des Fußes, wie gewünscht. -->
+  ${(daten.blocks.texte || []).map((t) => `
+    <tr><td style="padding-top:20px;font-size:11px;line-height:1.5;color:#737373;">
+      ${t.beschreibung || ''}
+    </td></tr>
+  `).join('')}
+
+  ${daten.notiz ? `
+  <tr><td style="padding-top:20px;font-size:13px;line-height:1.5;color:#171717;">
+    ${daten.notiz}
+  </td></tr>` : ''}
 
 </table>
 </td></tr>
@@ -399,7 +418,7 @@ async function loeseTicketInfo(ticket) {
   };
 }
 
-async function handleGet(partyId, ticketId) {
+async function handleGet(partyId, ticketId, overrides = {}) {
   const [katalog, party, ticket] = await Promise.all([
     ladeKatalog(),
     weclapp(`/party/id/${partyId}`),
@@ -446,14 +465,30 @@ async function handleGet(partyId, ticketId) {
     }
   }
 
-  // Dienstleistungen-Block hat (noch) kein eigenes Party-Feld zur Speicherung -
-  // deshalb bei jedem Laden frisch mit den vier Standardartikeln in fester
-  // Reihenfolge vorbelegt, jeweils mit Menge 1,00 als Startwert.
-  const dienstleistungKatalog = katalog.filter((a) => (a.erlaubteBloecke || []).includes('dienstleistung'));
-  const dienstleistungStandard = STANDARD_DIENSTLEISTUNG_ARTIKELNUMMERN
-    .map((nr) => dienstleistungKatalog.find((a) => a.articleNumber === nr))
-    .filter(Boolean)
-    .map((a) => ({ ...a, quantity: 1 }));
+  // Dienstleistung und Texte haben (noch) kein eigenes Party-Feld zur
+  // Speicherung. Normalerweise deshalb bei jedem Laden frisch mit den
+  // Standardartikeln vorbelegt - ABER: wenn overrides.dienstleistung/texte
+  // mitgegeben wird (siehe "senden"-Route), wird stattdessen der tatsächliche
+  // Browser-Zustand übernommen. Sonst würden Änderungen an diesen beiden
+  // Blöcken beim finalen Versand ignoriert, weil hier sonst immer die
+  // Standardwerte neu aufgebaut würden.
+  let dienstleistungBlock = overrides.dienstleistung;
+  if (!dienstleistungBlock) {
+    const dienstleistungKatalog = katalog.filter((a) => (a.erlaubteBloecke || []).includes('dienstleistung'));
+    dienstleistungBlock = STANDARD_DIENSTLEISTUNG_ARTIKELNUMMERN
+      .map((nr) => dienstleistungKatalog.find((a) => a.articleNumber === nr))
+      .filter(Boolean)
+      .map((a) => ({ ...a, quantity: 1 }));
+  }
+
+  let texteBlock = overrides.texte;
+  if (!texteBlock) {
+    const texteKatalog = katalog.filter((a) => (a.erlaubteBloecke || []).includes('texte'));
+    texteBlock = STANDARD_TEXTE_ARTIKELNUMMERN
+      .map((nr) => texteKatalog.find((a) => a.articleNumber === nr))
+      .filter(Boolean)
+      .map((a) => ({ ...a, pflicht: TEXTE_PFLICHT_ARTIKELNUMMERN.includes(a.articleNumber) }));
+  }
 
   const payment = await ladePayment(party);
 
@@ -465,7 +500,7 @@ async function handleGet(partyId, ticketId) {
   return {
     party: { id: party.id, company: party.company },
     katalog,
-    blocks: { ...blocksMitDetails, dienstleistung: dienstleistungStandard },
+    blocks: { ...blocksMitDetails, dienstleistung: dienstleistungBlock, texte: texteBlock },
     zeitaufwandSumme,
     payment,
     ticket: ticketInfo
@@ -590,6 +625,7 @@ exports.handler = async (event) => {
         party: { id: party.id, company: party.company },
         blocks: body.blocks,
         payment: body.payment,
+        notiz: body.notiz || null,
         ticket: ticketInfo
       };
       const html = generiereAngebotsHtml(daten);
@@ -616,7 +652,12 @@ exports.handler = async (event) => {
 
       await handlePut(partyId, body);
 
-      const daten = await handleGet(partyId, params.ticketId);
+      const daten = await handleGet(partyId, params.ticketId, {
+        dienstleistung: body.dienstleistung,
+        texte: body.texte
+      });
+      daten.notiz = body.notiz || null;
+
       if (!daten.ticket) {
         throw new HandledError(422, 'Ohne verknüpftes Ticket ist keine Vorschau/Versand möglich.');
       }
