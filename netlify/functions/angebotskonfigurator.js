@@ -32,7 +32,8 @@ const BLOCK_ATTRIBUTE_IDS = {
   kostenpflichtig: '2544446',
   enthalten: '2544448',
   kauf: '2544452',
-  vorhanden: '2543133'
+  vorhanden: '2543133',
+  tariftyp: '2571338'
 };
 
 // Katalog-Zugehörigkeit läuft wieder über einen nativen Status - schneller als
@@ -50,7 +51,8 @@ const KATALOG_ZUORDNUNG_WERT_ZU_BLOCK = {
   '2567326': 'kauf',
   '2567327': 'vorhanden',
   '2568640': 'dienstleistung',
-  '2571192': 'texte'
+  '2571192': 'texte',
+  '2571309': 'tariftyp'
 };
 
 // Diese zwei Text-Artikel werden bei jedem Laden als Standardbestückung des
@@ -78,10 +80,9 @@ function ermittleZeitaufwand(article) {
 // nötig - bleibt stabil, auch wenn die Artikel-ID sich mal ändert).
 const STANDARD_DIENSTLEISTUNG_ARTIKELNUMMERN = ['DOnboard', 'DInbetriebnahme', 'DEinweis', 'DFahr'];
 
-// Payment-Block: drei Zusatzfelder auf Party-Ebene (Gruppe "POS & Pay Details").
-// Tariftyp ist ein Auswahlfeld (LIST) -> selectedValueId muss über die Definition
-// aufgelöst werden, Faktor/TXN fix sind einfache Zahlenfelder (DECIMAL).
-const TARIFTYP_ATTRIBUTE_ID = '2544378';
+// Payment-Block: zwei Zusatzfelder auf Party-Ebene (Gruppe "POS & Pay Details").
+// Tariftyp lief früher hier als Auswahlfeld (LIST) - läuft jetzt als normaler
+// Artikel-Block über BLOCK_ATTRIBUTE_IDS.tariftyp, genau wie die Module.
 const FAKTOR_ATTRIBUTE_ID = '2544383';
 const TXN_FIX_ATTRIBUTE_ID = '2544394';
 
@@ -127,24 +128,10 @@ async function loeseTicketAuf(ticketNummer) {
 }
 
 async function ladePayment(party) {
-  const tariftypAttr = findeCustomAttribute(party, TARIFTYP_ATTRIBUTE_ID);
   const faktorAttr = findeCustomAttribute(party, FAKTOR_ATTRIBUTE_ID);
   const txnFixAttr = findeCustomAttribute(party, TXN_FIX_ATTRIBUTE_ID);
 
-  // Tariftyp-Definition immer laden (nicht nur bei vorhandener Auswahl), damit das
-  // Frontend die komplette Optionsliste für ein editierbares Auswahlfeld bekommt.
-  // Robust gegen ein gelöschtes/umbenanntes Feld (z.B. während der Umstellung auf
-  // "Modul Tariftyp") - dann bleibt die Optionsliste einfach leer statt zu crashen.
-  const tariftypDefinition = await weclapp(`/customAttributeDefinition/id/${TARIFTYP_ATTRIBUTE_ID}`).catch(() => null);
-  const tariftypOptionen = tariftypDefinition
-    ? (tariftypDefinition.selectableValues || []).map((w) => ({ id: w.id, value: w.value }))
-    : [];
-
   return {
-    tariftyp: {
-      selectedId: (tariftypAttr && tariftypAttr.selectedValueId) || null,
-      optionen: tariftypOptionen
-    },
     faktor: faktorAttr && faktorAttr.numberValue != null ? parseFloat(faktorAttr.numberValue) : null,
     kostenProTransaktion: txnFixAttr && txnFixAttr.numberValue != null ? parseFloat(txnFixAttr.numberValue) : null
   };
@@ -354,7 +341,7 @@ function generiereAngebotsHtml(daten) {
       <tr><td colspan="2" style="padding:20px 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#737373;border-bottom:1px solid #d4d4d4;">Payment</td></tr>
       <tr><td colspan="2">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
-          <tr><td style="padding:3px 0;color:#404040;">Tariftyp</td><td style="padding:3px 0;text-align:right;">${payment.tariftypLabel || '–'}</td></tr>
+          <tr><td style="padding:3px 0;color:#404040;">Tariftyp</td><td style="padding:3px 0;text-align:right;">${(blocks.tariftyp && blocks.tariftyp[0] && blocks.tariftyp[0].name) || '–'}</td></tr>
           <tr><td style="padding:3px 0;color:#404040;">Faktor</td><td style="padding:3px 0;text-align:right;">${payment.faktor != null ? payment.faktor.toString().replace('.', ',') : '–'}</td></tr>
           <tr><td style="padding:3px 0;color:#404040;">Kosten je Transaktion</td><td style="padding:3px 0;text-align:right;">${payment.kostenProTransaktion != null ? formatPreisServer(payment.kostenProTransaktion) : '–'}</td></tr>
         </table>
@@ -665,10 +652,6 @@ exports.handler = async (event) => {
       if (!process.env.N8N_WEBHOOK_URL) {
         throw new HandledError(500, 'N8N_WEBHOOK_URL ist nicht konfiguriert.');
       }
-
-      const tariftypOptionen = (daten.payment.tariftyp && daten.payment.tariftyp.optionen) || [];
-      const gewaehlteTariftypId = daten.payment.tariftyp && daten.payment.tariftyp.selectedId;
-      daten.payment.tariftypLabel = (tariftypOptionen.find((o) => o.id === gewaehlteTariftypId) || {}).value || null;
 
       const html = generiereAngebotsHtml(daten);
       const betreff = daten.ticket.betreff ? `Ihr Angebot: ${daten.ticket.betreff}` : 'Ihr Angebot';
