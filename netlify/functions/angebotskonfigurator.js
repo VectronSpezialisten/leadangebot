@@ -56,7 +56,7 @@ const KATALOG_ZUORDNUNG_WERT_ZU_BLOCK = {
 // Diese zwei Text-Artikel werden bei jedem Laden als Standardbestückung des
 // Texte-Blocks vorgeschlagen. Impressum ist ZWINGEND und im Frontend nicht
 // entfernbar (siehe TEXTE_PFLICHT_ARTIKELNUMMERN), AGB ist nur Vorschlag.
-const STANDARD_TEXTE_ARTIKELNUMMERN = ['imp', 'agb'];
+const STANDARD_TEXTE_ARTIKELNUMMERN = ['agb', 'imp'];
 const TEXTE_PFLICHT_ARTIKELNUMMERN = ['imp'];
 
 // "Zeitaufwand gesamt" - Custom Attribute auf Verkaufsartikeln (nicht auf den
