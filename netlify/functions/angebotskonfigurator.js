@@ -239,6 +239,144 @@ function blockAusParty(party, blockName) {
   return refs.map((r) => r.entityId);
 }
 
+// ---------- Angebots-Inhalt (E-Mail) generieren ----------
+//
+// Bewusst tabellenbasiert mit Inline-Styles (kein Flexbox/Grid, keine externen
+// Fonts) - das ist die einzige Bauweise, die in allen gängigen Mail-Clients
+// (inkl. Outlook Desktop, das viel modernes CSS ignoriert) zuverlässig
+// gleich aussieht. Kompakt gehalten, damit keine PDF zum Lesen nötig ist.
+
+function formatPreisServer(wert) {
+  return wert.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+}
+
+function renderArtikelZeilen(artikel, mitPreis) {
+  if (artikel.length === 0) {
+    return '<tr><td style="padding:4px 0;color:#737373;font-style:italic;font-size:13px;">Keine Artikel</td></tr>';
+  }
+  return artikel.map((a) => {
+    const preisZelle = mitPreis
+      ? `<td style="padding:4px 0;text-align:right;font-size:13px;color:#404040;white-space:nowrap;">${formatPreisServer(a.price)}</td>`
+      : '';
+    return `<tr>
+      <td style="padding:4px 0;font-size:13px;color:#171717;">${a.name}</td>
+      ${preisZelle}
+    </tr>`;
+  }).join('');
+}
+
+function renderModulBlock(titel, artikel, mitPreis, summe) {
+  const summenZeile = summe != null
+    ? `<tr><td style="padding-top:6px;border-top:1px solid #d4d4d4;font-size:13px;font-weight:600;">Summe</td>
+         <td style="padding-top:6px;border-top:1px solid #d4d4d4;text-align:right;font-size:13px;font-weight:600;">${formatPreisServer(summe)}</td></tr>`
+    : '';
+
+  return `
+    <tr><td colspan="2" style="padding:20px 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#737373;border-bottom:1px solid #d4d4d4;">${titel}</td></tr>
+    <tr><td colspan="2">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+        ${renderArtikelZeilen(artikel, mitPreis)}
+        ${summenZeile}
+      </table>
+    </td></tr>
+  `;
+}
+
+function berechneSummeServer(artikel) {
+  return artikel.reduce((s, a) => s + a.price, 0);
+}
+
+function berechneSummeDienstleistungServer(artikel) {
+  return artikel.reduce((s, a) => s + (a.price * (a.quantity || 0)), 0);
+}
+
+function generiereAngebotsHtml(daten) {
+  const blocks = daten.blocks;
+  const payment = daten.payment || {};
+  const ticket = daten.ticket || {};
+
+  const summeKostenpflichtig = berechneSummeServer(blocks.kostenpflichtig);
+  const summeKauf = berechneSummeServer(blocks.kauf);
+  const summeDienstleistung = berechneSummeDienstleistungServer(blocks.dienstleistung);
+  const gesamtMonatlich = summeKostenpflichtig;
+  const gesamtEinmalig = summeKauf + summeDienstleistung;
+
+  const dienstleistungMitPreisZeilen = blocks.dienstleistung.length === 0
+    ? '<tr><td style="padding:4px 0;color:#737373;font-style:italic;font-size:13px;">Keine Artikel</td></tr>'
+    : blocks.dienstleistung.map((a) => `
+        <tr>
+          <td style="padding:4px 0;font-size:13px;color:#171717;">${a.name} (${(a.quantity || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x)</td>
+          <td style="padding:4px 0;text-align:right;font-size:13px;color:#404040;white-space:nowrap;">${formatPreisServer(a.price * (a.quantity || 0))}</td>
+        </tr>
+      `).join('');
+
+  const anrede = ticket.ansprechpartnerVorname ? `Guten Tag ${ticket.ansprechpartnerVorname},` : 'Guten Tag,';
+
+  return `<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,Arial,sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:24px 0;">
+<tr><td align="center">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;padding:32px;color:#171717;">
+
+  <!-- Kopf -->
+  <tr><td style="font-size:15px;line-height:1.5;padding-bottom:16px;">
+    ${anrede}<br><br>
+    vielen Dank für Ihr Interesse an Vectron Smart4Pay. Nachfolgend finden Sie Ihr individuelles Angebot für <strong>${daten.party.company}</strong>.
+  </td></tr>
+
+  <!-- Ergebnis der Konfiguration -->
+  <tr><td>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+      ${renderModulBlock('Module kostenpflichtig', blocks.kostenpflichtig, true, summeKostenpflichtig)}
+      ${renderModulBlock('Module enthalten', blocks.enthalten, false, null)}
+      ${renderModulBlock('Module Kauf', blocks.kauf, true, summeKauf)}
+      ${renderModulBlock('Module vorhanden', blocks.vorhanden, false, null)}
+
+      <tr><td colspan="2" style="padding:20px 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#737373;border-bottom:1px solid #d4d4d4;">Dienstleistung</td></tr>
+      <tr><td colspan="2">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+          ${dienstleistungMitPreisZeilen}
+          <tr><td style="padding-top:6px;border-top:1px solid #d4d4d4;font-size:13px;font-weight:600;">Summe</td>
+              <td style="padding-top:6px;border-top:1px solid #d4d4d4;text-align:right;font-size:13px;font-weight:600;">${formatPreisServer(summeDienstleistung)}</td></tr>
+        </table>
+      </td></tr>
+
+      <tr><td colspan="2" style="padding:20px 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#737373;border-bottom:1px solid #d4d4d4;">Payment</td></tr>
+      <tr><td colspan="2">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
+          <tr><td style="padding:3px 0;color:#404040;">Tariftyp</td><td style="padding:3px 0;text-align:right;">${(payment.tariftyp && payment.tariftyp.optionen.find((o) => o.id === payment.tariftyp.selectedId) || {}).value || '–'}</td></tr>
+          <tr><td style="padding:3px 0;color:#404040;">Faktor</td><td style="padding:3px 0;text-align:right;">${payment.faktor != null ? payment.faktor.toString().replace('.', ',') : '–'}</td></tr>
+          <tr><td style="padding:3px 0;color:#404040;">Kosten je Transaktion</td><td style="padding:3px 0;text-align:right;">${payment.kostenProTransaktion != null ? formatPreisServer(payment.kostenProTransaktion) : '–'}</td></tr>
+        </table>
+      </td></tr>
+
+      <tr><td colspan="2" style="padding:20px 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#737373;border-bottom:1px solid #d4d4d4;">Abschluss</td></tr>
+      <tr><td colspan="2">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:14px;font-weight:600;">
+          <tr><td style="padding:4px 0;">Gesamt monatlich</td><td style="padding:4px 0;text-align:right;">${formatPreisServer(gesamtMonatlich)}</td></tr>
+          <tr><td style="padding:4px 0;">Gesamt einmalig</td><td style="padding:4px 0;text-align:right;">${formatPreisServer(gesamtEinmalig)}</td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </td></tr>
+
+  <!-- Fuss: AGB + Signatur (Platzhalter - bitte mit echtem Text ersetzen) -->
+  <tr><td style="padding-top:28px;border-top:1px solid #d4d4d4;margin-top:24px;font-size:11px;line-height:1.5;color:#737373;">
+    Es gelten unsere Allgemeinen Geschäftsbedingungen (AGB-Platzhaltertext - bitte durch echten Text ersetzen).
+  </td></tr>
+  <tr><td style="padding-top:16px;font-size:13px;line-height:1.5;color:#171717;">
+    Mit freundlichen Grüßen<br>
+    Ihr Team von Thiede &amp; Brauer GmbH – Kasse-Stimmt
+  </td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+}
+
 async function handleGet(partyId, ticketId) {
   const [katalog, party, ticket] = await Promise.all([
     ladeKatalog(),
@@ -306,9 +444,13 @@ async function handleGet(partyId, ticketId) {
       ? await weclapp(`/party/id/${ticket.contactId}`).catch(() => null)
       : null;
     ticketInfo = {
+      ticketId: ticket.id,
+      betreff: ticket.subject || null,
       beschreibung: ticket.description || null,
       ansprechpartner: kontakt ? [kontakt.firstName, kontakt.lastName].filter(Boolean).join(' ') : null,
-      telefon: kontakt ? kontakt.mobilePhone1 : null
+      ansprechpartnerVorname: kontakt ? kontakt.firstName : null,
+      telefon: kontakt ? kontakt.mobilePhone1 : null,
+      email: kontakt ? kontakt.email : null
     };
   }
 
@@ -377,12 +519,13 @@ exports.handler = async (event) => {
     return { statusCode: 204, headers, body: '' };
   }
 
-  // Auth-Daten kommen bei GET als Query-Parameter, bei PUT zusätzlich aus dem
-  // Body (damit Speichern nicht an einer zu langen Query-String-Grenze scheitert).
+  // Auth-Daten kommen bei GET als Query-Parameter, bei PUT/POST zusätzlich
+  // aus dem Body (damit Speichern/Senden nicht an einer zu langen
+  // Query-String-Grenze scheitert).
   let email;
   let passwort;
 
-  if (event.httpMethod === 'PUT') {
+  if (event.httpMethod === 'PUT' || event.httpMethod === 'POST') {
     const bodyVorab = JSON.parse(event.body || '{}');
     email = bodyVorab.email;
     passwort = bodyVorab.passwort;
@@ -417,6 +560,57 @@ exports.handler = async (event) => {
         headers,
         body: JSON.stringify({ fehler: 'Query-Parameter partyId oder ticketnummer fehlt.' })
       };
+    }
+
+    if (event.httpMethod === 'GET' && params.aktion === 'vorschau') {
+      const daten = await handleGet(partyId, params.ticketId);
+      if (!daten.ticket) {
+        throw new HandledError(422, 'Ohne verknüpftes Ticket ist keine Vorschau/Versand möglich.');
+      }
+      const html = generiereAngebotsHtml(daten);
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          html,
+          betreff: daten.ticket.betreff ? `Ihr Angebot: ${daten.ticket.betreff}` : 'Ihr Angebot',
+          empfaengerEmail: daten.ticket.email
+        })
+      };
+    }
+
+    if (event.httpMethod === 'POST' && params.aktion === 'senden') {
+      const daten = await handleGet(partyId, params.ticketId);
+      if (!daten.ticket) {
+        throw new HandledError(422, 'Ohne verknüpftes Ticket ist keine Vorschau/Versand möglich.');
+      }
+      if (!daten.ticket.email) {
+        throw new HandledError(422, 'Der Ansprechpartner hat keine hinterlegte E-Mail-Adresse.');
+      }
+      if (!process.env.N8N_WEBHOOK_URL) {
+        throw new HandledError(500, 'N8N_WEBHOOK_URL ist nicht konfiguriert.');
+      }
+
+      const html = generiereAngebotsHtml(daten);
+      const betreff = daten.ticket.betreff ? `Ihr Angebot: ${daten.ticket.betreff}` : 'Ihr Angebot';
+
+      const webhookResponse = await fetch(process.env.N8N_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          empfaengerEmail: daten.ticket.email,
+          betreff,
+          htmlInhalt: html,
+          ticketId: daten.ticket.ticketId
+        })
+      });
+
+      if (!webhookResponse.ok) {
+        const text = await webhookResponse.text().catch(() => '');
+        throw new HandledError(502, `Mailversand über n8n fehlgeschlagen: ${text || webhookResponse.status}`);
+      }
+
+      return { statusCode: 200, headers, body: JSON.stringify({ gesendet: true }) };
     }
 
     if (event.httpMethod === 'GET') {
