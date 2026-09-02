@@ -396,6 +396,7 @@
     <p class="subtitle" id="partyName" style="margin-bottom:4px;">Kunde wird geladen …</p>
     <p class="subtitle" id="kontaktZeile" style="margin-bottom:20px; font-size:13px;"></p>
 
+    <div id="konfiguratorBereich">
     <div class="block-heading">Modul kostenpflichtig</div>
     <div id="liste-kostenpflichtig"></div>
     <div class="modul-footer">
@@ -479,11 +480,15 @@
     <div class="error-msg" id="ladeFehler"></div>
 
     <button type="button" id="speichernBtn" disabled>Speichern</button>
+    </div>
 
     <div id="vorschauBereich" style="display:none; margin-top:24px; padding-top:20px; border-top:1px solid var(--gray-300);">
       <div class="block-heading" style="margin-top:0;">Angebots-Vorschau</div>
       <iframe id="vorschauFrame" style="width:100%; height:500px; border:1px solid var(--gray-300); border-radius:8px;"></iframe>
-      <button type="button" id="sendenBtn" style="margin-top:12px;">Angebot senden</button>
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <button type="button" id="zurueckBtn" class="btn-auto" style="background:var(--gray-100); color:var(--gray-700);">Zurück</button>
+        <button type="button" id="sendenBtn" style="flex:1;">Angebot senden</button>
+      </div>
       <div class="error-msg" id="sendenFehler"></div>
       <p class="info-panel__leer" id="sendenErfolg" style="display:none; color:var(--gray-700);">Angebot wurde versendet.</p>
     </div>
@@ -1147,6 +1152,7 @@
       }
       const daten = await response.json();
 
+      document.getElementById("konfiguratorBereich").style.display = "none";
       document.getElementById("vorschauBereich").style.display = "block";
       document.getElementById("vorschauFrame").srcdoc = daten.html;
       zustand.vorschauBetreff = daten.betreff;
@@ -1172,6 +1178,11 @@
           zeigeLadeFehler(err.message);
         }
       }
+    });
+
+    document.getElementById("zurueckBtn").addEventListener("click", () => {
+      document.getElementById("vorschauBereich").style.display = "none";
+      document.getElementById("konfiguratorBereich").style.display = "block";
     });
 
     document.getElementById("sendenBtn").addEventListener("click", async () => {
