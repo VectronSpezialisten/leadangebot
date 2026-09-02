@@ -345,7 +345,7 @@ function generiereAngebotsHtml(daten) {
       <tr><td colspan="2" style="padding:20px 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#737373;border-bottom:1px solid #d4d4d4;">Payment</td></tr>
       <tr><td colspan="2">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
-          <tr><td style="padding:3px 0;color:#404040;">Tariftyp</td><td style="padding:3px 0;text-align:right;">${(payment.tariftyp && payment.tariftyp.optionen.find((o) => o.id === payment.tariftyp.selectedId) || {}).value || '–'}</td></tr>
+          <tr><td style="padding:3px 0;color:#404040;">Tariftyp</td><td style="padding:3px 0;text-align:right;">${payment.tariftypLabel || '–'}</td></tr>
           <tr><td style="padding:3px 0;color:#404040;">Faktor</td><td style="padding:3px 0;text-align:right;">${payment.faktor != null ? payment.faktor.toString().replace('.', ',') : '–'}</td></tr>
           <tr><td style="padding:3px 0;color:#404040;">Kosten je Transaktion</td><td style="padding:3px 0;text-align:right;">${payment.kostenProTransaktion != null ? formatPreisServer(payment.kostenProTransaktion) : '–'}</td></tr>
         </table>
@@ -375,6 +375,28 @@ function generiereAngebotsHtml(daten) {
 </table>
 </body>
 </html>`;
+}
+
+// Löst Ticket + Ansprechpartner zu den Feldern auf, die fürs Info-Panel UND
+// für den E-Mail-Kopf/Empfänger gebraucht werden. Eigenständig, damit sowohl
+// handleGet (Editor laden) als auch die Vorschau (ohne Speichern) das nutzen
+// können, ohne Logik zu duplizieren.
+async function loeseTicketInfo(ticket) {
+  if (!ticket) return null;
+
+  const kontakt = ticket.contactId
+    ? await weclapp(`/party/id/${ticket.contactId}`).catch(() => null)
+    : null;
+
+  return {
+    ticketId: ticket.id,
+    betreff: ticket.subject || null,
+    beschreibung: ticket.description || null,
+    ansprechpartner: kontakt ? [kontakt.firstName, kontakt.lastName].filter(Boolean).join(' ') : null,
+    ansprechpartnerVorname: kontakt ? kontakt.firstName : null,
+    telefon: kontakt ? kontakt.mobilePhone1 : null,
+    email: kontakt ? kontakt.email : null
+  };
 }
 
 async function handleGet(partyId, ticketId) {
@@ -438,21 +460,7 @@ async function handleGet(partyId, ticketId) {
   // Ticket-Info nur, wenn eine ticketId mitgegeben wurde (z.B. aus der
   // Ticketsuche oder künftig direkt aus Leadstarts Link). Ohne ticketId
   // bleibt dieser Teil einfach leer - kein Pflichtbestandteil.
-  let ticketInfo = null;
-  if (ticket) {
-    const kontakt = ticket.contactId
-      ? await weclapp(`/party/id/${ticket.contactId}`).catch(() => null)
-      : null;
-    ticketInfo = {
-      ticketId: ticket.id,
-      betreff: ticket.subject || null,
-      beschreibung: ticket.description || null,
-      ansprechpartner: kontakt ? [kontakt.firstName, kontakt.lastName].filter(Boolean).join(' ') : null,
-      ansprechpartnerVorname: kontakt ? kontakt.firstName : null,
-      telefon: kontakt ? kontakt.mobilePhone1 : null,
-      email: kontakt ? kontakt.email : null
-    };
-  }
+  const ticketInfo = await loeseTicketInfo(ticket);
 
   return {
     party: { id: party.id, company: party.company },
@@ -562,24 +570,52 @@ exports.handler = async (event) => {
       };
     }
 
-    if (event.httpMethod === 'GET' && params.aktion === 'vorschau') {
-      const daten = await handleGet(partyId, params.ticketId);
-      if (!daten.ticket) {
+    // Vorschau: liest NICHT aus weclapp gespeicherten Zustand, sondern rendert
+    // direkt aus dem aktuellen Browser-Zustand (Blöcke/Payment im Body) - so
+    // zeigt die Vorschau auch unsicherheitliche Änderungen, ohne vorher speichern zu müssen.
+    if (event.httpMethod === 'POST' && params.aktion === 'vorschau') {
+      const body = JSON.parse(event.body || '{}');
+
+      const [party, ticket] = await Promise.all([
+        weclapp(`/party/id/${partyId}`),
+        params.ticketId ? weclapp(`/ticket/id/${params.ticketId}`).catch(() => null) : Promise.resolve(null)
+      ]);
+      const ticketInfo = await loeseTicketInfo(ticket);
+
+      if (!ticketInfo) {
         throw new HandledError(422, 'Ohne verknüpftes Ticket ist keine Vorschau/Versand möglich.');
       }
+
+      const daten = {
+        party: { id: party.id, company: party.company },
+        blocks: body.blocks,
+        payment: body.payment,
+        ticket: ticketInfo
+      };
       const html = generiereAngebotsHtml(daten);
+
       return {
         statusCode: 200,
         headers,
         body: JSON.stringify({
           html,
-          betreff: daten.ticket.betreff ? `Ihr Angebot: ${daten.ticket.betreff}` : 'Ihr Angebot',
-          empfaengerEmail: daten.ticket.email
+          betreff: ticketInfo.betreff ? `Ihr Angebot: ${ticketInfo.betreff}` : 'Ihr Angebot',
+          empfaengerEmail: ticketInfo.email
         })
       };
     }
 
+    // Senden: speichert JETZT erst die aktuellen Blöcke/Payment nach weclapp
+    // (bisher machte das ein separater "Speichern"-Klick vorher) und verschickt
+    // direkt im Anschluss den frisch gespeicherten Stand als Mail.
     if (event.httpMethod === 'POST' && params.aktion === 'senden') {
+      const body = JSON.parse(event.body || '{}');
+      if (!body.blocks) {
+        throw new HandledError(400, 'Body benötigt Feld "blocks" zum Speichern vor dem Versand.');
+      }
+
+      await handlePut(partyId, body);
+
       const daten = await handleGet(partyId, params.ticketId);
       if (!daten.ticket) {
         throw new HandledError(422, 'Ohne verknüpftes Ticket ist keine Vorschau/Versand möglich.');
@@ -590,6 +626,10 @@ exports.handler = async (event) => {
       if (!process.env.N8N_WEBHOOK_URL) {
         throw new HandledError(500, 'N8N_WEBHOOK_URL ist nicht konfiguriert.');
       }
+
+      const tariftypOptionen = (daten.payment.tariftyp && daten.payment.tariftyp.optionen) || [];
+      const gewaehlteTariftypId = daten.payment.tariftyp && daten.payment.tariftyp.selectedId;
+      daten.payment.tariftypLabel = (tariftypOptionen.find((o) => o.id === gewaehlteTariftypId) || {}).value || null;
 
       const html = generiereAngebotsHtml(daten);
       const betreff = daten.ticket.betreff ? `Ihr Angebot: ${daten.ticket.betreff}` : 'Ihr Angebot';
