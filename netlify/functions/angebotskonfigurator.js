@@ -36,8 +36,28 @@ const KATALOG_ZUORDNUNG_WERT_ZU_BLOCK = {
   '2567324': 'kostenpflichtig',
   '2567325': 'enthalten',
   '2567326': 'kauf',
-  '2567327': 'vorhanden'
+  '2567327': 'vorhanden',
+  '2568640': 'dienstleistung'
 };
+
+// "Zeitaufwand gesamt" - Custom Attribute auf Verkaufsartikeln (nicht auf den
+// Dienstleistungsartikeln selbst!), von Karsten manuell gepflegt. Wird pro
+// Artikel in kostenpflichtig/enthalten/kauf/vorhanden aufsummiert und im
+// Dienstleistungen-Block als Orientierungswert angezeigt.
+const ZEITAUFWAND_ATTRIBUTE_ID = '2544464';
+
+function ermittleZeitaufwand(article) {
+  const attr = (article.customAttributes || []).find(
+    (a) => a.attributeDefinitionId === ZEITAUFWAND_ATTRIBUTE_ID
+  );
+  return attr && attr.numberValue != null ? parseFloat(attr.numberValue) : 0;
+}
+
+// Diese vier Dienstleistungsartikel werden bei jedem Laden in dieser Reihenfolge
+// als Standardbestückung des Dienstleistungen-Blocks vorgeschlagen (per
+// articleNumber aus dem bereits geladenen Katalog gematcht, keine feste ID
+// nötig - bleibt stabil, auch wenn die Artikel-ID sich mal ändert).
+const STANDARD_DIENSTLEISTUNG_ARTIKELNUMMERN = ['DOnboard', 'DInbetriebnahme', 'DEinweis', 'DFahr'];
 
 // Payment-Block: drei Zusatzfelder auf Party-Ebene (Gruppe "POS & Pay Details").
 // Tariftyp ist ein Auswahlfeld (LIST) -> selectedValueId muss über die Definition
@@ -151,6 +171,7 @@ function katalogEintragAus(article) {
     articleNumber: article.articleNumber,
     name: article.name,
     price: ermittlePreis(article),
+    zeitaufwand: ermittleZeitaufwand(article),
     erlaubteBloecke: ermittleErlaubteBloecke(article)
   };
 }
@@ -207,12 +228,32 @@ async function handleGet(partyId) {
       .filter(Boolean);
   }
 
+  // Zeitaufwand-Summe: über alle aktuell ausgewählten Artikel in den vier
+  // "oberen" Blöcken (kostenpflichtig/enthalten/kauf/vorhanden), NICHT über
+  // die Dienstleistungsartikel selbst - dient dort nur als Orientierungswert.
+  let zeitaufwandSumme = 0;
+  for (const blockName of Object.keys(BLOCK_ATTRIBUTE_IDS)) {
+    for (const eintrag of blocksMitDetails[blockName]) {
+      zeitaufwandSumme += eintrag.zeitaufwand || 0;
+    }
+  }
+
+  // Dienstleistungen-Block hat (noch) kein eigenes Party-Feld zur Speicherung -
+  // deshalb bei jedem Laden frisch mit den vier Standardartikeln in fester
+  // Reihenfolge vorbelegt, jeweils mit Menge 1,00 als Startwert.
+  const dienstleistungKatalog = katalog.filter((a) => (a.erlaubteBloecke || []).includes('dienstleistung'));
+  const dienstleistungStandard = STANDARD_DIENSTLEISTUNG_ARTIKELNUMMERN
+    .map((nr) => dienstleistungKatalog.find((a) => a.articleNumber === nr))
+    .filter(Boolean)
+    .map((a) => ({ ...a, quantity: 1 }));
+
   const payment = await ladePayment(party);
 
   return {
     party: { id: party.id, company: party.company },
     katalog,
-    blocks: blocksMitDetails,
+    blocks: { ...blocksMitDetails, dienstleistung: dienstleistungStandard },
+    zeitaufwandSumme,
     payment
   };
 }
