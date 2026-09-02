@@ -1021,6 +1021,7 @@
     const params = new URLSearchParams(window.location.search);
     const partyId = params.get("partyId");
     const ticketIdAusUrl = params.get("ticketId");
+    const ticketnummerAusUrl = params.get("ticketnummer");
 
     // Kommt der Aufruf mit email/pw in der URL (Link aus Leadstarts Erfolgsblock),
     // wird direkt angemeldet und die Zugangsdaten sofort aus der sichtbaren URL
@@ -1034,8 +1035,14 @@
       if (partyId) {
         bereinigteUrl += `?partyId=${encodeURIComponent(partyId)}`;
         if (ticketIdAusUrl) bereinigteUrl += `&ticketId=${encodeURIComponent(ticketIdAusUrl)}`;
+      } else if (ticketnummerAusUrl) {
+        bereinigteUrl += `?ticketnummer=${encodeURIComponent(ticketnummerAusUrl)}`;
       }
       window.history.replaceState({}, "", bereinigteUrl);
+    } else if (urlEmail) {
+      // Nur E-Mail übergeben (z.B. aus Leadstart), kein Passwort - das Passwort
+      // bleibt geheim und wird von Hand eingegeben. E-Mail-Feld nur vorausfüllen.
+      document.getElementById("loginEmail").value = urlEmail;
     }
 
     const bestehenderZugang = getZugang();
@@ -1050,6 +1057,10 @@
     } else if (bestehenderZugang) {
       // Kein partyId, aber schon angemeldet -> direkt zur Ticketsuche.
       zeigeTicketSuche();
+      if (ticketnummerAusUrl) {
+        document.getElementById("ticketNummerInput").value = ticketnummerAusUrl;
+        await fuehreTicketsucheAus(ticketnummerAusUrl, bestehenderZugang);
+      }
     } else {
       zeigeLogin();
     }
@@ -1084,6 +1095,10 @@
         // Ticketsuche-Aufruf (401 dort führt zurück zum Login, siehe sucheTicket).
         setZugang(email, passwort);
         zeigeTicketSuche();
+        if (ticketnummerAusUrl) {
+          document.getElementById("ticketNummerInput").value = ticketnummerAusUrl;
+          await fuehreTicketsucheAus(ticketnummerAusUrl, zugangVersuch);
+        }
       }
     });
 
@@ -1094,17 +1109,13 @@
       zeigeLogin();
     });
 
-    document.getElementById("ticketSuchenBtn").addEventListener("click", async () => {
-      const ticketNummer = document.getElementById("ticketNummerInput").value.trim();
+    async function fuehreTicketsucheAus(ticketNummer, zugang) {
       const ticketSucheError = document.getElementById("ticketSucheError");
       const ticketBestaetigung = document.getElementById("ticketBestaetigung");
       ticketSucheError.style.display = "none";
       ticketBestaetigung.style.display = "none";
 
       if (!ticketNummer) return;
-
-      const zugang = getZugang();
-      if (!zugang) { zeigeLogin(); return; }
 
       try {
         const daten = await sucheTicket(ticketNummer, zugang);
@@ -1120,6 +1131,13 @@
           ticketSucheError.style.display = "block";
         }
       }
+    }
+
+    document.getElementById("ticketSuchenBtn").addEventListener("click", async () => {
+      const ticketNummer = document.getElementById("ticketNummerInput").value.trim();
+      const zugang = getZugang();
+      if (!zugang) { zeigeLogin(); return; }
+      await fuehreTicketsucheAus(ticketNummer, zugang);
     });
 
     document.getElementById("ticketWeiterBtn").addEventListener("click", async () => {
