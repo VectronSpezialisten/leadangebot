@@ -26,7 +26,10 @@ const BLOCK_ATTRIBUTE_IDS = {
   vorhanden: '2543133'
 };
 
-const KATALOG_STATUS_ID = '2544460'; // articleStatus "Smart4Pay Konfigurator"
+// Katalog-Zugehörigkeit läuft wieder über einen nativen Status - schneller als
+// clientseitiges Filtern über 1000 Artikel. WICHTIG: neuer Status "S4P Konfigurator"
+// (2569873), NICHT identisch mit dem alten, mittlerweile entfernten Status 2544460.
+const KATALOG_STATUS_ID = '2569873';
 
 // Neues Custom Attribute auf Artikel-Ebene (MULTISELECT_LIST, Label "S4P Konfigurator"):
 // legt fest, in welchem/welchen Block(s) ein Artikel überhaupt wählbar sein darf.
