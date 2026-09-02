@@ -454,6 +454,18 @@
     </div>
     <div class="modul-summe" id="summe-dienstleistung">0,00 €</div>
 
+    <div class="block-heading">Texte</div>
+    <div id="liste-texte"></div>
+    <div class="modul-footer">
+      <div class="such-auswahl">
+        <input type="text" id="suche-texte" placeholder="Textbaustein suchen …" autocomplete="off">
+        <div class="such-ergebnisse" id="ergebnisse-texte"></div>
+      </div>
+      <button type="button" class="btn-auto" id="add-texte">+ Hinzufügen</button>
+    </div>
+    <label for="notizFeld" style="margin-top:16px;">Notiz (spezielle Absprachen)</label>
+    <textarea id="notizFeld" rows="3" placeholder="Wird sichtbar Teil des Angebots, falls ausgefüllt …" style="width:100%; padding:10px 12px; border:1px solid var(--gray-300); border-radius:8px; font-family:inherit; font-size:14px; resize:vertical;"></textarea>
+
     <div class="block-heading">Payment</div>
     <div class="payment-zeile">
       <span class="payment-label">Tariftyp</span>
@@ -514,8 +526,8 @@
                                           // ist man dann automatisch schon angemeldet
   const MODUL_NAMEN = ["kostenpflichtig", "enthalten", "kauf", "vorhanden"];
   // Zusätzlich zu den vier persistenten Blöcken - für Such-/Hinzufügen-Verkabelung,
-  // NICHT für die Speicher-Logik (Dienstleistung hat noch kein eigenes Party-Feld).
-  const ALLE_BLOCK_NAMEN = [...MODUL_NAMEN, "dienstleistung"];
+  // NICHT für die Speicher-Logik (Dienstleistung/Texte haben noch kein eigenes Party-Feld).
+  const ALLE_BLOCK_NAMEN = [...MODUL_NAMEN, "dienstleistung", "texte"];
 
   const loginBox = document.getElementById("loginBox");
   const ticketSucheBox = document.getElementById("ticketSucheBox");
@@ -530,9 +542,10 @@
     gefundenePartyId: null,
     gefundeneTicketId: null,
     katalog: [],
-    module: { kostenpflichtig: [], enthalten: [], kauf: [], vorhanden: [], dienstleistung: [] },
-    ausgewaehlteArtikelId: { kostenpflichtig: null, enthalten: null, kauf: null, vorhanden: null, dienstleistung: null },
-    payment: { tariftypId: null, faktor: null, kostenProTransaktion: null }
+    module: { kostenpflichtig: [], enthalten: [], kauf: [], vorhanden: [], dienstleistung: [], texte: [] },
+    ausgewaehlteArtikelId: { kostenpflichtig: null, enthalten: null, kauf: null, vorhanden: null, dienstleistung: null, texte: null },
+    payment: { tariftypId: null, faktor: null, kostenProTransaktion: null },
+    notiz: ""
   };
 
   function getZugang() {
@@ -760,9 +773,63 @@
     if (einmaligFeld) einmaligFeld.textContent = formatPreis(einmalig);
   }
 
+  function renderTexte() {
+    const container = document.getElementById("liste-texte");
+    container.innerHTML = "";
+
+    if (zustand.module.texte.length === 0) {
+      const leer = document.createElement("div");
+      leer.className = "modul-leer";
+      leer.textContent = "Noch keine Textbausteine";
+      container.appendChild(leer);
+    }
+
+    zustand.module.texte.forEach((artikel, index) => {
+      const zeile = document.createElement("div");
+      zeile.className = "artikel-zeile";
+
+      const name = document.createElement("span");
+      name.className = "artikel-name";
+      name.textContent = artikel.name + (artikel.pflicht ? " (Pflicht)" : "");
+
+      const controls = document.createElement("div");
+      controls.className = "artikel-controls";
+
+      const hoch = document.createElement("button");
+      hoch.className = "btn-klein";
+      hoch.textContent = "↑";
+      hoch.title = "Nach oben verschieben";
+      hoch.disabled = index === 0;
+      hoch.addEventListener("click", () => verschiebe("texte", index, -1));
+
+      const runter = document.createElement("button");
+      runter.className = "btn-klein";
+      runter.textContent = "↓";
+      runter.title = "Nach unten verschieben";
+      runter.disabled = index === zustand.module.texte.length - 1;
+      runter.addEventListener("click", () => verschiebe("texte", index, 1));
+
+      controls.append(hoch, runter);
+
+      // Pflicht-Textbausteine (z.B. Impressum) sind nicht entfernbar.
+      if (!artikel.pflicht) {
+        const entfernen = document.createElement("button");
+        entfernen.className = "btn-klein entfernen";
+        entfernen.textContent = "×";
+        entfernen.title = "Entfernen";
+        entfernen.addEventListener("click", () => entferneAusModul("texte", artikel.articleId));
+        controls.appendChild(entfernen);
+      }
+
+      zeile.append(name, controls);
+      container.appendChild(zeile);
+    });
+  }
+
   function renderAlles() {
     renderModule();
     renderDienstleistung();
+    renderTexte();
     berechneAbschluss();
   }
 
@@ -790,7 +857,7 @@
       treffer.forEach((artikel) => {
         const zeile = document.createElement("div");
         zeile.className = "such-ergebnis-zeile";
-        zeile.textContent = (modulName === "enthalten" || modulName === "vorhanden")
+        zeile.textContent = (modulName === "enthalten" || modulName === "vorhanden" || modulName === "texte")
           ? artikel.name
           : `${artikel.name} — ${formatPreis(artikel.price)}`;
         // mousedown statt click: feuert vor dem blur des Inputs, sonst
@@ -961,6 +1028,8 @@
       zustand.ticketId = daten.ticket ? daten.ticket.ticketId : null;
       zustand.katalog = daten.katalog;
       zustand.module = daten.blocks;
+      zustand.notiz = "";
+      document.getElementById("notizFeld").value = "";
 
       document.getElementById("partyName").textContent = daten.party.company;
       renderInfoPanel(daten.ticket);
@@ -1154,6 +1223,29 @@
 
     bindeHinzufuegenButtons();
 
+    document.getElementById("notizFeld").addEventListener("input", (e) => {
+      zustand.notiz = e.target.value;
+      markiereUngespeichert();
+    });
+
+    async function speichereKonfiguration(zugang) {
+      const response = await fetch(`${FUNCTION_URL}?partyId=${encodeURIComponent(zustand.partyId)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          blocks: baueModuleAlsIds(),
+          payment: bauePaymentPayload(),
+          email: zugang.email,
+          passwort: zugang.passwort
+        })
+      });
+      if (!response.ok) {
+        const fehlerDaten = await response.json().catch(() => ({}));
+        throw new Error(fehlerDaten.fehler || `Speichern fehlgeschlagen (${response.status})`);
+      }
+      return response.json();
+    }
+
     async function ladeVorschau(zugang) {
       if (!zustand.ticketId) return;
 
@@ -1168,6 +1260,7 @@
             faktor: alsZahlOderNull(zustand.payment.faktor),
             kostenProTransaktion: alsZahlOderNull(zustand.payment.kostenProTransaktion)
           },
+          notiz: zustand.notiz,
           email: zugang.email,
           passwort: zugang.passwort
         })
@@ -1183,18 +1276,21 @@
       document.getElementById("vorschauFrame").srcdoc = daten.html;
     }
 
-    // "Speichern" schreibt bewusst NICHT mehr nach weclapp - erzeugt nur eine
-    // Vorschau aus dem aktuellen Browser-Zustand. Das eigentliche Schreiben
-    // passiert erst beim Versand (siehe sendenBtn), damit weclapp nur den
-    // tatsächlich versendeten Stand als Wahrheit bekommt.
+    // "Speichern" schreibt jetzt wieder nach weclapp (damit der Stand bei
+    // einem späteren erneuten Öffnen erhalten bleibt) UND zeigt direkt im
+    // Anschluss die Vorschau. "Angebot senden" speichert davon unabhängig
+    // nochmal - stellt sicher, dass exakt der versendete Stand auch der
+    // gespeicherte ist, auch wenn dazwischen noch etwas geändert wurde.
     document.getElementById("speichernBtn").addEventListener("click", async () => {
       const btn = document.getElementById("speichernBtn");
       const zugang = getZugang();
       if (!zugang) { zeigeLogin(); return; }
 
       btn.disabled = true;
-      btn.textContent = "Erzeugt Vorschau …";
+      btn.textContent = "Speichert …";
       try {
+        await speichereKonfiguration(zugang);
+        btn.textContent = "Erzeugt Vorschau …";
         await ladeVorschau(zugang);
         document.getElementById("ladeFehler").style.display = "none";
       } catch (err) {
@@ -1232,6 +1328,9 @@
           body: JSON.stringify({
             blocks: baueModuleAlsIds(),
             payment: bauePaymentPayload(),
+            dienstleistung: zustand.module.dienstleistung,
+            texte: zustand.module.texte,
+            notiz: zustand.notiz,
             email: zugang.email,
             passwort: zugang.passwort
           })
