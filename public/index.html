@@ -133,6 +133,22 @@
 
   /* Eine Artikelzeile innerhalb eines Moduls - bewusst als schlichte Liste
      (wie .kandidat-option bei Leadstart), keine gerahmten Kacheln. */
+  .artikel-menge {
+    width: 52px;
+    padding: 4px 6px;
+    border: 1px solid var(--gray-300);
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: var(--font-mono, monospace);
+    text-align: right;
+  }
+  .artikel-zwischensumme {
+    font-size: 13px;
+    color: var(--gray-500);
+    white-space: nowrap;
+    min-width: 64px;
+    text-align: right;
+  }
   .artikel-zeile {
     display: flex;
     align-items: center;
@@ -339,7 +355,16 @@
     <div class="modul-summe dezent">Bestand beim Kunden</div>
 
     <div class="block-heading">Dienstleistung</div>
-    <p id="dienstleistungHinweis">Folgt als nächster Baustein, sobald die Modul-Zusammenstellung steht.</p>
+    <div class="modul-summe dezent" id="zeitaufwand-summe" style="text-align:left; margin-top:0; margin-bottom:10px;">Zeitaufwand gesamt: – Std.</div>
+    <div id="liste-dienstleistung"></div>
+    <div class="modul-footer">
+      <div class="such-auswahl">
+        <input type="text" id="suche-dienstleistung" placeholder="Artikel suchen …" autocomplete="off">
+        <div class="such-ergebnisse" id="ergebnisse-dienstleistung"></div>
+      </div>
+      <button type="button" class="btn-auto" id="add-dienstleistung">+ Hinzufügen</button>
+    </div>
+    <div class="modul-summe" id="summe-dienstleistung">0,00 €</div>
 
     <div class="block-heading">Payment</div>
     <div class="payment-zeile">
@@ -355,6 +380,16 @@
       <input type="text" id="payment-txn-fix" class="payment-input" inputmode="decimal" placeholder="z.B. 0,08">
     </div>
 
+    <div class="block-heading">Abschluss</div>
+    <div class="payment-zeile">
+      <span class="payment-label">Gesamt monatlich</span>
+      <span class="payment-wert" id="abschluss-monatlich">0,00 €</span>
+    </div>
+    <div class="payment-zeile">
+      <span class="payment-label">Gesamt einmalig</span>
+      <span class="payment-wert" id="abschluss-einmalig">0,00 €</span>
+    </div>
+
     <div class="error-msg" id="ladeFehler"></div>
 
     <button type="button" id="speichernBtn" disabled>Speichern</button>
@@ -367,6 +402,9 @@
                                           // Apps irgendwann dieselbe Domain teilen,
                                           // ist man dann automatisch schon angemeldet
   const MODUL_NAMEN = ["kostenpflichtig", "enthalten", "kauf", "vorhanden"];
+  // Zusätzlich zu den vier persistenten Blöcken - für Such-/Hinzufügen-Verkabelung,
+  // NICHT für die Speicher-Logik (Dienstleistung hat noch kein eigenes Party-Feld).
+  const ALLE_BLOCK_NAMEN = [...MODUL_NAMEN, "dienstleistung"];
 
   const loginBox = document.getElementById("loginBox");
   const appContent = document.getElementById("appContent");
@@ -377,8 +415,8 @@
   const zustand = {
     partyId: null,
     katalog: [],
-    module: { kostenpflichtig: [], enthalten: [], kauf: [], vorhanden: [] },
-    ausgewaehlteArtikelId: { kostenpflichtig: null, enthalten: null, kauf: null, vorhanden: null },
+    module: { kostenpflichtig: [], enthalten: [], kauf: [], vorhanden: [], dienstleistung: [] },
+    ausgewaehlteArtikelId: { kostenpflichtig: null, enthalten: null, kauf: null, vorhanden: null, dienstleistung: null },
     payment: { tariftypId: null, faktor: null, kostenProTransaktion: null }
   };
 
@@ -470,15 +508,20 @@
   function fuegeZuModulHinzu(modulName, artikel) {
     const bereitsDrin = zustand.module[modulName].some((a) => a.articleId === artikel.articleId);
     if (bereitsDrin) return;
-    zustand.module[modulName].push(artikel);
+
+    // Im Dienstleistungen-Block bekommt jede Zeile eine Menge (Default 1) -
+    // in den anderen Blöcken bleibt die Menge weiterhin im Artikeltext codiert.
+    const neuerEintrag = modulName === "dienstleistung" ? { ...artikel, quantity: 1 } : artikel;
+
+    zustand.module[modulName].push(neuerEintrag);
     markiereUngespeichert();
-    renderModule();
+    renderAlles();
   }
 
   function entferneAusModul(modulName, articleId) {
     zustand.module[modulName] = zustand.module[modulName].filter((a) => a.articleId !== articleId);
     markiereUngespeichert();
-    renderModule();
+    renderAlles();
   }
 
   function verschiebe(modulName, index, richtung) {
@@ -487,11 +530,103 @@
     if (zielIndex < 0 || zielIndex >= liste.length) return;
     [liste[index], liste[zielIndex]] = [liste[zielIndex], liste[index]];
     markiereUngespeichert();
-    renderModule();
+    renderAlles();
   }
 
   function berechneSumme(modulName) {
     return zustand.module[modulName].reduce((summe, a) => summe + a.price, 0);
+  }
+
+  function berechneSummeDienstleistung() {
+    return zustand.module.dienstleistung.reduce(
+      (summe, a) => summe + (a.price * (a.quantity || 0)), 0
+    );
+  }
+
+  function renderDienstleistung() {
+    const container = document.getElementById("liste-dienstleistung");
+    container.innerHTML = "";
+
+    if (zustand.module.dienstleistung.length === 0) {
+      const leer = document.createElement("div");
+      leer.className = "modul-leer";
+      leer.textContent = "Noch keine Artikel";
+      container.appendChild(leer);
+    }
+
+    zustand.module.dienstleistung.forEach((artikel, index) => {
+      const zeile = document.createElement("div");
+      zeile.className = "artikel-zeile";
+
+      const mengeInput = document.createElement("input");
+      mengeInput.type = "text";
+      mengeInput.className = "artikel-menge";
+      mengeInput.inputMode = "decimal";
+      mengeInput.value = (artikel.quantity != null ? artikel.quantity : 1).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      // "change" statt "input": erst beim Verlassen des Felds neu rendern,
+      // sonst würde der Cursor bei jedem Tastendruck aus dem Feld springen.
+      mengeInput.addEventListener("change", () => {
+        const zahl = alsZahlOderNull(mengeInput.value);
+        artikel.quantity = zahl != null ? zahl : 0;
+        markiereUngespeichert();
+        renderAlles();
+      });
+
+      const name = document.createElement("span");
+      name.className = "artikel-name";
+      name.textContent = artikel.name;
+
+      const zwischensumme = document.createElement("span");
+      zwischensumme.className = "artikel-zwischensumme";
+      zwischensumme.textContent = formatPreis(artikel.price * (artikel.quantity || 0));
+
+      const controls = document.createElement("div");
+      controls.className = "artikel-controls";
+
+      const hoch = document.createElement("button");
+      hoch.className = "btn-klein";
+      hoch.textContent = "↑";
+      hoch.title = "Nach oben verschieben";
+      hoch.disabled = index === 0;
+      hoch.addEventListener("click", () => verschiebe("dienstleistung", index, -1));
+
+      const runter = document.createElement("button");
+      runter.className = "btn-klein";
+      runter.textContent = "↓";
+      runter.title = "Nach unten verschieben";
+      runter.disabled = index === zustand.module.dienstleistung.length - 1;
+      runter.addEventListener("click", () => verschiebe("dienstleistung", index, 1));
+
+      const entfernen = document.createElement("button");
+      entfernen.className = "btn-klein entfernen";
+      entfernen.textContent = "×";
+      entfernen.title = "Entfernen";
+      entfernen.addEventListener("click", () => entferneAusModul("dienstleistung", artikel.articleId));
+
+      controls.append(hoch, runter, entfernen);
+      zeile.append(mengeInput, name, zwischensumme, controls);
+      container.appendChild(zeile);
+    });
+
+    const summeFeld = document.getElementById("summe-dienstleistung");
+    if (summeFeld) summeFeld.textContent = formatPreis(berechneSummeDienstleistung());
+  }
+
+  function berechneAbschluss() {
+    const monatlich = berechneSumme("kostenpflichtig");
+    const einmalig = berechneSumme("kauf") + berechneSummeDienstleistung();
+
+    const monatlichFeld = document.getElementById("abschluss-monatlich");
+    if (monatlichFeld) monatlichFeld.textContent = formatPreis(monatlich);
+
+    const einmaligFeld = document.getElementById("abschluss-einmalig");
+    if (einmaligFeld) einmaligFeld.textContent = formatPreis(einmalig);
+  }
+
+  function renderAlles() {
+    renderModule();
+    renderDienstleistung();
+    berechneAbschluss();
   }
 
   function zeigeTreffer(modulName) {
@@ -623,7 +758,7 @@
   }
 
   function bindeHinzufuegenButtons() {
-    for (const modulName of MODUL_NAMEN) {
+    for (const modulName of ALLE_BLOCK_NAMEN) {
       document.getElementById("add-" + modulName).addEventListener("click", () => {
         const articleId = zustand.ausgewaehlteArtikelId[modulName];
         if (!articleId) return;
@@ -654,10 +789,16 @@
       zustand.module = daten.blocks;
 
       document.getElementById("partyName").textContent = daten.party.company;
-      for (const modulName of MODUL_NAMEN) {
+      for (const modulName of ALLE_BLOCK_NAMEN) {
         initialisiereSuche(modulName);
       }
-      renderModule();
+      renderAlles();
+
+      const zeitaufwandFeld = document.getElementById("zeitaufwand-summe");
+      if (zeitaufwandFeld) {
+        const summe = daten.zeitaufwandSumme || 0;
+        zeitaufwandFeld.textContent = `Zeitaufwand gesamt: ${summe.toLocaleString("de-DE")} Std.`;
+      }
 
       const payment = daten.payment || {};
 
