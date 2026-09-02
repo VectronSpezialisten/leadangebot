@@ -524,11 +524,9 @@ async function handlePut(partyId, body) {
   }
 
   if (payment) {
-    if (payment.tariftypId !== undefined) {
-      setzeCustomAttribute(customAttributes, TARIFTYP_ATTRIBUTE_ID, {
-        selectedValueId: payment.tariftypId || null
-      });
-    }
+    // Das alte Tariftyp-Feld (LIST) wurde entfernt und wird durch einen
+    // Artikel-Bezug ersetzt (siehe TARIFTYP_MODUL_ATTRIBUTE_ID) - deshalb hier
+    // bewusst kein Schreibversuch mehr auf TARIFTYP_ATTRIBUTE_ID.
     if (payment.faktor !== undefined) {
       setzeCustomAttribute(customAttributes, FAKTOR_ATTRIBUTE_ID, {
         numberValue: payment.faktor
