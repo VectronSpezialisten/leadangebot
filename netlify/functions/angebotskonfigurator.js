@@ -201,6 +201,46 @@ async function weclapp(path, options = {}) {
   return response.status === 204 ? null : response.json();
 }
 
+// Separater Helper für Binär-Downloads (Artikelbild/Prospekt-PDF) - weclapp()
+// oben parst immer als JSON, das passt hier nicht.
+async function weclappBinaer(path) {
+  const response = await fetch(`${BASE_URL}${path}`, {
+    headers: { AuthenticationToken: process.env.WECLAPP_API_TOKEN }
+  });
+  if (!response.ok) {
+    throw new Error(`weclapp GET ${path} -> ${response.status}`);
+  }
+  const mimeType = response.headers.get('content-type') || 'application/octet-stream';
+  const arrayBuffer = await response.arrayBuffer();
+  return {
+    mimeType,
+    base64: Buffer.from(arrayBuffer).toString('base64')
+  };
+}
+
+// Lädt das Prospekt (Artikelbild-Endpunkt, liefert laut weclapp auch PDFs)
+// für einen Artikel - nimmt das als "mainImage" markierte Bild, sonst das erste.
+// Robust: kein Bild vorhanden oder Download schlägt fehl -> einfach null,
+// der Versand darf daran nicht scheitern.
+async function ladeProspekt(artikel) {
+  const bilder = artikel.artikelbilder || [];
+  if (bilder.length === 0) return null;
+  const gewaehlt = bilder.find((b) => b.mainImage) || bilder[0];
+
+  try {
+    const { mimeType, base64 } = await weclappBinaer(
+      `/article/id/${artikel.articleId}/downloadArticleImage?articleImageId=${gewaehlt.id}`
+    );
+    return {
+      dateiname: gewaehlt.fileName || `${artikel.articleNumber}.pdf`,
+      mimeType,
+      base64
+    };
+  } catch {
+    return null;
+  }
+}
+
 function ermittlePreis(article) {
   const prices = article.articlePrices || [];
   const allgemein = prices.find((p) => !p.customerId) || prices[0];
@@ -215,7 +255,14 @@ function katalogEintragAus(article) {
     price: ermittlePreis(article),
     zeitaufwand: ermittleZeitaufwand(article),
     beschreibung: article.longText || null,
-    erlaubteBloecke: ermittleErlaubteBloecke(article)
+    erlaubteBloecke: ermittleErlaubteBloecke(article),
+    // "Artikelbild" wird bei euch auch für Prospekt-PDFs zweckentfremdet -
+    // Endpunkt liefert laut API auch application/pdf zurück, nicht nur Bilder.
+    artikelbilder: (article.articleImages || []).map((img) => ({
+      id: img.id,
+      fileName: img.fileName || null,
+      mainImage: !!img.mainImage
+    }))
   };
 }
 
@@ -759,6 +806,17 @@ exports.handler = async (event) => {
       const html = generiereAngebotsHtml(daten);
       const betreff = `Ihr neues Vectron POS-System [${daten.ticket.ticketNummer || ''}]`;
 
+      // Prospekte der ausgewählten Produktartikel (nur die vier "echten" Modul-
+      // blöcke, nicht Dienstleistung/Texte/Tariftyp) parallel laden. Artikel ohne
+      // hinterlegtes Bild/PDF liefern einfach null und werden rausgefiltert.
+      const produktArtikel = [
+        ...daten.blocks.kostenpflichtig,
+        ...daten.blocks.enthalten,
+        ...daten.blocks.kauf,
+        ...daten.blocks.vorhanden
+      ];
+      const prospekte = (await Promise.all(produktArtikel.map(ladeProspekt))).filter(Boolean);
+
       const webhookResponse = await fetch(process.env.N8N_WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -766,7 +824,8 @@ exports.handler = async (event) => {
           empfaengerEmail: daten.ticket.email,
           betreff,
           htmlInhalt: html,
-          ticketId: daten.ticket.ticketId
+          ticketId: daten.ticket.ticketId,
+          anhaenge: prospekte
         })
       });
 
