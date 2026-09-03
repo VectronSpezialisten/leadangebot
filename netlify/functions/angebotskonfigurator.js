@@ -665,21 +665,22 @@ async function handleGet(partyId, ticketId, overrides = {}) {
 // Läuft best-effort: schlägt das Anlegen fehl, wird das im Log vermerkt,
 // blockiert aber NICHT den eigentlichen Mailversand.
 async function erstelleWeclappAngebot(partyId, kaufArtikel, dienstleistungArtikel, ticket) {
+  // Entscheidend ist die tatsächliche Eigenschaft des Artikels (invoicingType:
+  // EFFORT = Dienstleistungsartikel, FIXED_PRICE = Handelsartikel) - nicht,
+  // aus welchem Block er kommt. Bei Handelsartikeln ist das Feld offenbar
+  // unveränderlich (weclapp lehnt es dort ab), bei Dienstleistungsartikeln
+  // muss es explizit gesetzt werden, sonst passt es nicht zum Artikel.
+  function alsQuotationItem(a, quantity) {
+    const eintrag = { articleId: a.articleId, quantity: String(quantity), optional: false, alternative: false };
+    if (a.invoicingType === 'EFFORT') {
+      eintrag.invoicingType = 'EFFORT';
+    }
+    return eintrag;
+  }
+
   const quotationItems = [
-    ...kaufArtikel.map((a) => ({
-      articleId: a.articleId,
-      quantity: '1',
-      optional: false,
-      alternative: false,
-      invoicingType: a.invoicingType
-    })),
-    ...dienstleistungArtikel.map((a) => ({
-      articleId: a.articleId,
-      quantity: String(a.quantity || 1),
-      optional: false,
-      alternative: false,
-      invoicingType: a.invoicingType
-    }))
+    ...kaufArtikel.map((a) => alsQuotationItem(a, 1)),
+    ...dienstleistungArtikel.map((a) => alsQuotationItem(a, a.quantity || 1))
   ];
 
   if (quotationItems.length === 0) return null;
