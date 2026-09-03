@@ -214,7 +214,7 @@ function katalogEintragAus(article) {
     name: article.name,
     price: ermittlePreis(article),
     zeitaufwand: ermittleZeitaufwand(article),
-    beschreibung: article.description || null,
+    beschreibung: article.longText || null,
     erlaubteBloecke: ermittleErlaubteBloecke(article)
   };
 }
@@ -441,7 +441,7 @@ async function ladeIntroText() {
   try {
     const response = await weclapp(`/article?articleNumber-eq=intro`);
     const artikel = (response.result || [])[0];
-    return artikel ? artikel.description : null;
+    return artikel ? artikel.longText : null;
   } catch {
     return null;
   }
