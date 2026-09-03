@@ -535,12 +535,21 @@ async function loeseTicketInfo(ticket) {
     ladeLetztenKommentar(ticket.id)
   ]);
 
+  // Sprache kommt jetzt aus dem Kontakt (commercialLanguageId -> languageCode),
+  // nicht mehr aus dem Ticket selbst. Robust: fehlendes Feld oder Lookup-Fehler
+  // -> einfach null, kein Absturz.
+  let sprache = null;
+  if (kontakt && kontakt.commercialLanguageId) {
+    const sprachEintrag = await weclapp(`/commercialLanguage/id/${kontakt.commercialLanguageId}`).catch(() => null);
+    sprache = sprachEintrag ? sprachEintrag.languageCode : null;
+  }
+
   return {
     ticketId: ticket.id,
     ticketNummer: ticket.ticketNumber || null,
     betreff: ticket.subject || null,
     beschreibung: ticket.description || null,
-    sprache: ticket.language || null,
+    sprache,
     letzterKommentar,
     ansprechpartner: kontakt ? [kontakt.firstName, kontakt.lastName].filter(Boolean).join(' ') : null,
     ansprechpartnerVorname: kontakt ? kontakt.firstName : null,
