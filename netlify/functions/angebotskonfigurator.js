@@ -248,14 +248,14 @@ function formatPreisServer(wert) {
 
 function renderArtikelZeilen(artikel, mitPreis) {
   if (artikel.length === 0) {
-    return '<tr><td style="padding:4px 0;color:#737373;font-style:italic;font-size:15px;">Keine Artikel</td></tr>';
+    return '<tr><td style="padding:4px 0;color:#737373;font-style:italic;font-size:13px;">Keine Artikel</td></tr>';
   }
   return artikel.map((a) => {
     const preisZelle = mitPreis
-      ? `<td style="padding:4px 0;text-align:right;font-size:15px;color:#404040;white-space:nowrap;">${formatPreisServer(a.price)}</td>`
+      ? `<td style="padding:4px 0;text-align:right;font-size:13px;color:#404040;white-space:nowrap;">${formatPreisServer(a.price)}</td>`
       : '';
     return `<tr>
-      <td style="padding:4px 0;font-size:15px;color:#171717;">${a.name}</td>
+      <td style="padding:4px 0;font-size:13px;color:#171717;">${a.name}</td>
       ${preisZelle}
     </tr>`;
   }).join('');
@@ -263,12 +263,12 @@ function renderArtikelZeilen(artikel, mitPreis) {
 
 function renderModulBlock(titel, artikel, mitPreis, summe) {
   const summenZeile = summe != null
-    ? `<tr><td style="padding-top:6px;border-top:1px solid #d4d4d4;font-size:15px;font-weight:600;">Summe</td>
-         <td style="padding-top:6px;border-top:1px solid #d4d4d4;text-align:right;font-size:15px;font-weight:600;">${formatPreisServer(summe)}</td></tr>`
+    ? `<tr><td style="padding-top:6px;border-top:1px solid #d4d4d4;font-size:13px;font-weight:600;">Summe</td>
+         <td style="padding-top:6px;border-top:1px solid #d4d4d4;text-align:right;font-size:13px;font-weight:600;">${formatPreisServer(summe)}</td></tr>`
     : '';
 
   return `
-    <tr><td colspan="2" style="padding:20px 0 8px;font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#737373;border-bottom:1px solid #d4d4d4;">${titel}</td></tr>
+    <tr><td colspan="2" style="padding:20px 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#737373;border-bottom:1px solid #d4d4d4;">${titel}</td></tr>
     <tr><td colspan="2">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
         ${renderArtikelZeilen(artikel, mitPreis)}
@@ -298,11 +298,11 @@ function generiereAngebotsHtml(daten) {
   const gesamtEinmalig = summeKauf + summeDienstleistung;
 
   const dienstleistungMitPreisZeilen = blocks.dienstleistung.length === 0
-    ? '<tr><td style="padding:4px 0;color:#737373;font-style:italic;font-size:15px;">Keine Artikel</td></tr>'
+    ? '<tr><td style="padding:4px 0;color:#737373;font-style:italic;font-size:13px;">Keine Artikel</td></tr>'
     : blocks.dienstleistung.map((a) => `
         <tr>
-          <td style="padding:4px 0;font-size:15px;color:#171717;">${a.name} (${(a.quantity || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x)</td>
-          <td style="padding:4px 0;text-align:right;font-size:15px;color:#404040;white-space:nowrap;">${formatPreisServer(a.price * (a.quantity || 0))}</td>
+          <td style="padding:4px 0;font-size:13px;color:#171717;">${a.name} (${(a.quantity || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x)</td>
+          <td style="padding:4px 0;text-align:right;font-size:13px;color:#404040;white-space:nowrap;">${formatPreisServer(a.price * (a.quantity || 0))}</td>
         </tr>
       `).join('');
 
@@ -335,7 +335,7 @@ function generiereAngebotsHtml(daten) {
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
 
   <!-- Kopf -->
-  <tr><td style="font-size:15px;line-height:1.5;padding-bottom:16px;">
+  <tr><td style="font-size:13px;line-height:1.5;padding-bottom:16px;">
     ${anrede}<br><br>
     ${introText}
   </td></tr>
@@ -348,31 +348,31 @@ function generiereAngebotsHtml(daten) {
       ${renderModulBlock('Module Kauf', blocks.kauf, true, summeKauf)}
       ${renderModulBlock('Module vorhanden', blocks.vorhanden, false, null)}
 
-      <tr><td colspan="2" style="padding:20px 0 8px;font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#737373;border-bottom:1px solid #d4d4d4;">Dienstleistung</td></tr>
+      <tr><td colspan="2" style="padding:20px 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#737373;border-bottom:1px solid #d4d4d4;">Dienstleistung</td></tr>
       <tr><td colspan="2">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
           ${dienstleistungMitPreisZeilen}
-          <tr><td style="padding-top:6px;border-top:1px solid #d4d4d4;font-size:15px;font-weight:600;">Summe</td>
-              <td style="padding-top:6px;border-top:1px solid #d4d4d4;text-align:right;font-size:15px;font-weight:600;">${formatPreisServer(summeDienstleistung)}</td></tr>
+          <tr><td style="padding-top:6px;border-top:1px solid #d4d4d4;font-size:13px;font-weight:600;">Summe</td>
+              <td style="padding-top:6px;border-top:1px solid #d4d4d4;text-align:right;font-size:13px;font-weight:600;">${formatPreisServer(summeDienstleistung)}</td></tr>
         </table>
       </td></tr>
 
-      <tr><td colspan="2" style="padding:20px 0 8px;font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#737373;border-bottom:1px solid #d4d4d4;">Payment</td></tr>
+      <tr><td colspan="2" style="padding:20px 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#737373;border-bottom:1px solid #d4d4d4;">Payment</td></tr>
       <tr><td colspan="2">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:15px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
           <tr><td style="padding:3px 0;color:#404040;">Tariftyp</td><td style="padding:3px 0;text-align:right;">${(blocks.tariftyp && blocks.tariftyp[0] && blocks.tariftyp[0].name) || '–'}</td></tr>
-          <tr><td style="padding:3px 0;color:#404040;">Faktor</td><td style="padding:3px 0;text-align:right;">${payment.faktor != null ? payment.faktor.toString().replace('.', ',') + '%' : '–'}</td></tr>
+          <tr><td style="padding:3px 0;color:#404040;">Serviceentgelt</td><td style="padding:3px 0;text-align:right;">${payment.faktor != null ? payment.faktor.toString().replace('.', ',') + '%' : '–'}</td></tr>
           <tr><td style="padding:3px 0;color:#404040;">Kosten je Transaktion</td><td style="padding:3px 0;text-align:right;">${payment.kostenProTransaktion != null ? formatPreisServer(payment.kostenProTransaktion) : '–'}</td></tr>
         </table>
       </td></tr>
       ${(blocks.tariftyp && blocks.tariftyp[0] && blocks.tariftyp[0].beschreibung) ? `
-      <tr><td colspan="2" style="padding-top:10px;font-size:15px;line-height:1.5;color:#737373;">
+      <tr><td colspan="2" style="padding-top:10px;font-size:12px;line-height:1.5;color:#737373;">
         ${blocks.tariftyp[0].beschreibung}
       </td></tr>` : ''}
 
-      <tr><td colspan="2" style="padding:20px 0 8px;font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#737373;border-bottom:1px solid #d4d4d4;">Abschluss</td></tr>
+      <tr><td colspan="2" style="padding:20px 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#737373;border-bottom:1px solid #d4d4d4;">Abschluss</td></tr>
       <tr><td colspan="2">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:15px;font-weight:600;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:14px;font-weight:600;">
           <tr><td style="padding:4px 0;">Gesamt monatlich</td><td style="padding:4px 0;text-align:right;">${formatPreisServer(gesamtMonatlich)}</td></tr>
           <tr><td style="padding:4px 0;">Gesamt einmalig</td><td style="padding:4px 0;text-align:right;">${formatPreisServer(gesamtEinmalig)}</td></tr>
         </table>
@@ -383,12 +383,12 @@ function generiereAngebotsHtml(daten) {
   <!-- Fuß-Ersatz: 1) Hinweise, 2) Texte (konfigurierte Reihenfolge, ohne Impressum),
        3) Impressum immer zuletzt, zentriert. Kein statischer Signaturtext mehr. -->
   ${daten.hinweise ? `
-  <tr><td style="padding-top:28px;border-top:1px solid #d4d4d4;font-size:15px;line-height:1.5;color:#171717;">
+  <tr><td style="padding-top:28px;border-top:1px solid #d4d4d4;font-size:13px;line-height:1.5;color:#171717;">
     ${daten.hinweise}
   </td></tr>` : ''}
 
   ${(daten.blocks.texte || []).filter((t) => t.articleNumber !== 'imp').map((t, i, arr) => `
-    <tr><td style="padding-top:${(!daten.hinweise && i === 0) ? '28' : '20'}px;${(!daten.hinweise && i === 0) ? 'border-top:1px solid #d4d4d4;' : ''}font-size:15px;line-height:1.5;color:#737373;">
+    <tr><td style="padding-top:${(!daten.hinweise && i === 0) ? '28' : '20'}px;${(!daten.hinweise && i === 0) ? 'border-top:1px solid #d4d4d4;' : ''}font-size:11px;line-height:1.5;color:#737373;">
       ${t.beschreibung || ''}
     </td></tr>
   `).join('')}
@@ -398,7 +398,7 @@ function generiereAngebotsHtml(daten) {
     if (!impressum) return '';
     const keineVorherigenElemente = !daten.hinweise && (daten.blocks.texte || []).filter((t) => t.articleNumber !== 'imp').length === 0;
     return `
-    <tr><td style="padding-top:${keineVorherigenElemente ? '28' : '20'}px;${keineVorherigenElemente ? 'border-top:1px solid #d4d4d4;' : ''}font-size:15px;line-height:1.5;color:#737373;text-align:center;">
+    <tr><td style="padding-top:${keineVorherigenElemente ? '28' : '20'}px;${keineVorherigenElemente ? 'border-top:1px solid #d4d4d4;' : ''}font-size:11px;line-height:1.5;color:#737373;text-align:center;">
       ${impressum.beschreibung || ''}
     </td></tr>`;
   })()}
