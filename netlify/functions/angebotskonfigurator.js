@@ -660,7 +660,7 @@ async function handleGet(partyId, ticketId, overrides = {}) {
 // beim Kunden), da es kein eigenes "gesendet"-Status in weclapp gibt.
 // Läuft best-effort: schlägt das Anlegen fehl, wird das im Log vermerkt,
 // blockiert aber NICHT den eigentlichen Mailversand.
-async function erstelleWeclappAngebot(partyId, kaufArtikel, dienstleistungArtikel) {
+async function erstelleWeclappAngebot(partyId, kaufArtikel, dienstleistungArtikel, ticket) {
   const quotationItems = [
     ...kaufArtikel.map((a) => ({
       articleId: a.articleId,
@@ -684,9 +684,49 @@ async function erstelleWeclappAngebot(partyId, kaufArtikel, dienstleistungArtike
       body: JSON.stringify({
         customerId: partyId,
         status: 'OPEN',
-        quotationItems
+        quotationItems,
+        // Bezug zum Ticket: da es kein natives ticketId-Feld am Angebot gibt,
+        // wird die Ticketnummer als Freitext-Referenz mitgegeben.
+        recordComment: `Erstellt aus Angebotskonfigurator, Ticket ${ticket.ticketNummer || ticket.ticketId}`
       })
     });
+
+    // Bezug in die andere Richtung: interner Kommentar am Ticket mit der
+    // neuen Angebotsnummer, damit man von dort aus auch zurückfindet.
+    await weclapp('/comment', {
+      method: 'POST',
+      body: JSON.stringify({
+        entityName: 'ticket',
+        entityId: ticket.ticketId,
+        comment: `weclapp-Angebot ${angebot.quotationNumber || angebot.id} wurde aus dem Angebotskonfigurator angelegt.`,
+        publicComment: false
+      })
+    }).catch((fehler) => console.error('Kommentar am Ticket (Angebot-Referenz) fehlgeschlagen:', fehler.message));
+
+    // Echter "Bezug" am Ticket (natives entityReferences-Feld) - verknüpft
+    // das Ticket strukturell mit dem neuen Angebot, nicht nur per Freitext.
+    // PUT braucht das komplette Ticket-Objekt; ticketStatusId/assignedUserId/
+    // followUpDate bewusst NICHT mitschicken (bekannter 400-Fehler bei
+    // Mail2Ticket-/Sales-Navigator-Tickets, siehe Notion "Wissen intern").
+    try {
+      const komplettesTicket = await weclapp(`/ticket/id/${ticket.ticketId}`);
+      const { ticketStatusId, assignedUserId, followUpDate, ...ticketOhneRisikoFelder } = komplettesTicket;
+      const bestehendeReferenzen = komplettesTicket.entityReferences || [];
+
+      await weclapp(`/ticket/id/${ticket.ticketId}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          ...ticketOhneRisikoFelder,
+          entityReferences: [
+            ...bestehendeReferenzen,
+            { entityId: angebot.id, entityName: 'quotation' }
+          ]
+        })
+      });
+    } catch (fehler) {
+      console.error('Bezug (entityReferences) am Ticket konnte nicht gesetzt werden:', fehler.message);
+    }
+
     return { id: angebot.id, quotationNumber: angebot.quotationNumber || null };
   } catch (fehler) {
     console.error('weclapp-Angebot konnte nicht angelegt werden:', fehler.message);
@@ -883,7 +923,8 @@ exports.handler = async (event) => {
       const weclappAngebot = await erstelleWeclappAngebot(
         partyId,
         daten.blocks.kauf,
-        daten.blocks.dienstleistung
+        daten.blocks.dienstleistung,
+        daten.ticket
       );
 
       const webhookResponse = await fetch(process.env.N8N_WEBHOOK_URL, {
