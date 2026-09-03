@@ -397,9 +397,6 @@
       <button id="logoutBtn">Abmelden</button>
     </div>
 
-    <p class="subtitle" id="partyName" style="margin-bottom:4px;">Kunde wird geladen …</p>
-    <p class="subtitle" id="kontaktZeile" style="margin-bottom:20px; font-size:13px;"></p>
-
     <div id="konfiguratorBereich">
     <div class="block-heading">Modul kostenpflichtig</div>
     <div id="liste-kostenpflichtig"></div>
@@ -471,7 +468,10 @@
     </div>
     <div class="payment-zeile">
       <span class="payment-label">Faktor</span>
-      <input type="text" id="payment-faktor" class="payment-input" inputmode="decimal" placeholder="z.B. 0,0355">
+      <span style="display:flex; align-items:center; gap:6px;">
+        <input type="text" id="payment-faktor" class="payment-input" inputmode="decimal" placeholder="z.B. 0,0355" style="text-align:right;">
+        <span style="color:var(--gray-500); font-size:14px;">%</span>
+      </span>
     </div>
     <div class="payment-zeile">
       <span class="payment-label">Kosten je Transaktion</span>
@@ -1004,19 +1004,6 @@
   function renderInfoPanel(ticket, kunde) {
     const panel = document.getElementById("infoPanel");
     const inhalt = document.getElementById("infoPanelInhalt");
-    const kontaktZeile = document.getElementById("kontaktZeile");
-
-    // Kontakt+Telefon bleibt zusätzlich im festen Bereich unter dem Betrieb -
-    // das Info-Panel ist ja nur im Desktop-Modus sichtbar (siehe Media Query),
-    // im Smartphone-Modus braucht's die Info trotzdem irgendwo.
-    if (ticket && (ticket.ansprechpartner || ticket.telefon)) {
-      const telefonHtml = ticket.telefon
-        ? `<a href="tel:${ticket.telefon.replace(/\s+/g, '')}">${ticket.telefon}</a>`
-        : '–';
-      kontaktZeile.innerHTML = `${ticket.ansprechpartner || '–'} · ${telefonHtml}`;
-    } else {
-      kontaktZeile.textContent = "";
-    }
 
     if (!ticket) {
       inhalt.innerHTML = '<p class="info-panel__leer">Kein Ticket verknüpft.</p>';
@@ -1071,7 +1058,6 @@
       zustand.hinweise = "";
       document.getElementById("hinweiseFeld").value = "";
 
-      document.getElementById("partyName").textContent = daten.party.company;
       renderInfoPanel(daten.ticket, daten.party.company);
       for (const modulName of ALLE_BLOCK_NAMEN) {
         initialisiereSuche(modulName);
