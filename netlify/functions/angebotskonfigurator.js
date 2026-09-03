@@ -310,8 +310,11 @@ function generiereAngebotsHtml(daten) {
   // Intro-Text kommt aus dem Artikellangtext des Artikels "intro" (in weclapp
   // gepflegt, wie AGB/Impressum) - Firmenname wird automatisch angehängt.
   // Fallback auf einen statischen Text, falls der Artikel (noch) nicht existiert.
-  const introBasis = daten.introText || 'vielen Dank für Ihr Interesse an Vectron Smart4Pay. Nachfolgend finden Sie Ihr individuelles Angebot für';
-  const introText = `${introBasis} ${daten.party.company}.`;
+  const introBasisRoh = daten.introText || 'vielen Dank für Ihr Interesse an Vectron Smart4Pay. Nachfolgend finden Sie Ihr individuelles Angebot für';
+  // Abschließende Absatz-/Umbruch-Tags entfernen, damit der fett angehängte
+  // Firmenname direkt im selben Textfluss landet statt auf einer neuen Zeile.
+  const introBasis = introBasisRoh.replace(/(<\/p>|<br\s*\/?>|\s)+$/i, '');
+  const introText = `${introBasis} <strong>${daten.party.company}</strong>.`;
 
   return `<!DOCTYPE html>
 <html>
@@ -336,7 +339,7 @@ function generiereAngebotsHtml(daten) {
 
   <!-- Kopf -->
   <tr><td style="font-size:13px;line-height:1.5;padding-bottom:16px;">
-    ${anrede}<br><br>
+    ${anrede}<br>
     ${introText}
   </td></tr>
 
@@ -387,11 +390,16 @@ function generiereAngebotsHtml(daten) {
     ${daten.hinweise}
   </td></tr>` : ''}
 
-  ${(daten.blocks.texte || []).filter((t) => t.articleNumber !== 'imp').map((t, i, arr) => `
-    <tr><td style="padding-top:${(!daten.hinweise && i === 0) ? '28' : '20'}px;${(!daten.hinweise && i === 0) ? 'border-top:1px solid #d4d4d4;' : ''}font-size:11px;line-height:1.5;color:#737373;">
+  ${(daten.blocks.texte || []).filter((t) => t.articleNumber !== 'imp').map((t, i, arr) => {
+    const istAgb = t.articleNumber === 'agb';
+    const groesse = istAgb ? '11px' : '13px';
+    const farbe = istAgb ? '#737373' : '#171717';
+    return `
+    <tr><td style="padding-top:${(!daten.hinweise && i === 0) ? '28' : '20'}px;${(!daten.hinweise && i === 0) ? 'border-top:1px solid #d4d4d4;' : ''}font-size:${groesse};line-height:1.5;color:${farbe};">
       ${t.beschreibung || ''}
     </td></tr>
-  `).join('')}
+  `;
+  }).join('')}
 
   ${(() => {
     const impressum = (daten.blocks.texte || []).find((t) => t.articleNumber === 'imp');
