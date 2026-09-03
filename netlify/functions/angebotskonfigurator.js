@@ -712,18 +712,18 @@ async function erstelleWeclappAngebot(partyId, kaufArtikel, dienstleistungArtike
 
     // Echter "Bezug" am Ticket (natives entityReferences-Feld) - verknüpft
     // das Ticket strukturell mit dem neuen Angebot, nicht nur per Freitext.
-    // PUT braucht das komplette Ticket-Objekt; ticketStatusId/assignedUserId/
-    // followUpDate bewusst NICHT mitschicken (bekannter 400-Fehler bei
-    // Mail2Ticket-/Sales-Navigator-Tickets, siehe Notion "Wissen intern").
+    // PUT braucht das komplette Ticket-Objekt - anders als beim bekannten
+    // Leadstart-Fall (dort war ticketStatusId beim Update problematisch) ist
+    // es hier Pflichtfeld, deshalb komplett unverändert zurückschicken und
+    // nur entityReferences ergänzen.
     try {
       const komplettesTicket = await weclapp(`/ticket/id/${ticket.ticketId}`);
-      const { ticketStatusId, assignedUserId, followUpDate, ...ticketOhneRisikoFelder } = komplettesTicket;
       const bestehendeReferenzen = komplettesTicket.entityReferences || [];
 
       await weclapp(`/ticket/id/${ticket.ticketId}`, {
         method: 'PUT',
         body: JSON.stringify({
-          ...ticketOhneRisikoFelder,
+          ...komplettesTicket,
           entityReferences: [
             ...bestehendeReferenzen,
             { entityId: angebot.id, entityName: 'quotation' }
