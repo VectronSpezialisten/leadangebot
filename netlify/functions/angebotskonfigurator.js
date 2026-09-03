@@ -360,6 +360,10 @@ function generiereAngebotsHtml(daten) {
           <tr><td style="padding:3px 0;color:#404040;">Kosten je Transaktion</td><td style="padding:3px 0;text-align:right;">${payment.kostenProTransaktion != null ? formatPreisServer(payment.kostenProTransaktion) : '–'}</td></tr>
         </table>
       </td></tr>
+      ${(blocks.tariftyp && blocks.tariftyp[0] && blocks.tariftyp[0].beschreibung) ? `
+      <tr><td colspan="2" style="padding-top:10px;font-size:12px;line-height:1.5;color:#737373;">
+        ${blocks.tariftyp[0].beschreibung}
+      </td></tr>` : ''}
 
       <tr><td colspan="2" style="padding:20px 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#737373;border-bottom:1px solid #d4d4d4;">Abschluss</td></tr>
       <tr><td colspan="2">
@@ -371,24 +375,28 @@ function generiereAngebotsHtml(daten) {
     </table>
   </td></tr>
 
-  <!-- Fuss: Signatur (Platzhalter - bitte mit echtem Text ersetzen, sobald geklärt) -->
+  <!-- Fuß-Ersatz: 1) Hinweise, 2) Texte (konfigurierte Reihenfolge, ohne Impressum),
+       3) Impressum immer zuletzt, zentriert. Kein statischer Signaturtext mehr. -->
+  ${daten.hinweise ? `
   <tr><td style="padding-top:28px;border-top:1px solid #d4d4d4;font-size:13px;line-height:1.5;color:#171717;">
-    Mit freundlichen Grüßen<br>
-    Ihr Team von Thiede &amp; Brauer GmbH – Kasse-Stimmt
-  </td></tr>
+    ${daten.hinweise}
+  </td></tr>` : ''}
 
-  <!-- Texte-Block: AGB/Impressum/weitere Rechtstexte, kommt aus den Artikellangtexten
-       der im Texte-Block ausgewählten Artikel - unterhalb des Fußes, wie gewünscht. -->
-  ${(daten.blocks.texte || []).map((t) => `
-    <tr><td style="padding-top:20px;font-size:11px;line-height:1.5;color:#737373;">
+  ${(daten.blocks.texte || []).filter((t) => t.articleNumber !== 'imp').map((t, i, arr) => `
+    <tr><td style="padding-top:${(!daten.hinweise && i === 0) ? '28' : '20'}px;${(!daten.hinweise && i === 0) ? 'border-top:1px solid #d4d4d4;' : ''}font-size:11px;line-height:1.5;color:#737373;">
       ${t.beschreibung || ''}
     </td></tr>
   `).join('')}
 
-  ${daten.hinweise ? `
-  <tr><td style="padding-top:20px;font-size:13px;line-height:1.5;color:#171717;">
-    ${daten.hinweise}
-  </td></tr>` : ''}
+  ${(() => {
+    const impressum = (daten.blocks.texte || []).find((t) => t.articleNumber === 'imp');
+    if (!impressum) return '';
+    const keineVorherigenElemente = !daten.hinweise && (daten.blocks.texte || []).filter((t) => t.articleNumber !== 'imp').length === 0;
+    return `
+    <tr><td style="padding-top:${keineVorherigenElemente ? '28' : '20'}px;${keineVorherigenElemente ? 'border-top:1px solid #d4d4d4;' : ''}font-size:11px;line-height:1.5;color:#737373;text-align:center;">
+      ${impressum.beschreibung || ''}
+    </td></tr>`;
+  })()}
 
 </table>
 </td></tr>
@@ -433,6 +441,7 @@ async function loeseTicketInfo(ticket) {
 
   return {
     ticketId: ticket.id,
+    ticketNummer: ticket.ticketNumber || null,
     betreff: ticket.subject || null,
     beschreibung: ticket.description || null,
     letzterKommentar,
@@ -658,7 +667,7 @@ exports.handler = async (event) => {
         headers,
         body: JSON.stringify({
           html,
-          betreff: ticketInfo.betreff ? `Ihr Angebot: ${ticketInfo.betreff}` : 'Ihr Angebot',
+          betreff: `Ihr neues Vectron POS-System [${ticketInfo.ticketNummer || ''}]`,
           empfaengerEmail: ticketInfo.email
         })
       };
@@ -692,7 +701,7 @@ exports.handler = async (event) => {
       }
 
       const html = generiereAngebotsHtml(daten);
-      const betreff = daten.ticket.betreff ? `Ihr Angebot: ${daten.ticket.betreff}` : 'Ihr Angebot';
+      const betreff = `Ihr neues Vectron POS-System [${daten.ticket.ticketNummer || ''}]`;
 
       const webhookResponse = await fetch(process.env.N8N_WEBHOOK_URL, {
         method: 'POST',
