@@ -236,7 +236,8 @@ async function ladeProspekt(artikel) {
       mimeType,
       base64
     };
-  } catch {
+  } catch (fehler) {
+    console.error(`Prospekt-Download fehlgeschlagen für Artikel ${artikel.articleNumber} (Bild-ID ${gewaehlt.id}):`, fehler.message);
     return null;
   }
 }
@@ -815,7 +816,12 @@ exports.handler = async (event) => {
         ...daten.blocks.kauf,
         ...daten.blocks.vorhanden
       ];
+      console.error('Produktartikel für Prospekt-Check:', produktArtikel.map((a) => ({
+        articleNumber: a.articleNumber,
+        anzahlBilder: (a.artikelbilder || []).length
+      })));
       const prospekte = (await Promise.all(produktArtikel.map(ladeProspekt))).filter(Boolean);
+      console.error(`Prospekte gefunden: ${prospekte.length} von ${produktArtikel.length} Artikeln`);
 
       const webhookResponse = await fetch(process.env.N8N_WEBHOOK_URL, {
         method: 'POST',
