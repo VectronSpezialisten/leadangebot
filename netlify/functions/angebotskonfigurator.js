@@ -540,6 +540,7 @@ async function loeseTicketInfo(ticket) {
     ticketNummer: ticket.ticketNumber || null,
     betreff: ticket.subject || null,
     beschreibung: ticket.description || null,
+    sprache: ticket.language || null,
     letzterKommentar,
     ansprechpartner: kontakt ? [kontakt.firstName, kontakt.lastName].filter(Boolean).join(' ') : null,
     ansprechpartnerVorname: kontakt ? kontakt.firstName : null,
@@ -637,6 +638,47 @@ async function handleGet(partyId, ticketId, overrides = {}) {
     payment,
     ticket: ticketInfo
   };
+}
+
+// Legt ein echtes weclapp-Angebot (/quotation) an, ausschließlich aus den
+// Kauf- und Dienstleistungsartikeln - die "kostenpflichtig"/"enthalten"/
+// "vorhanden"-Module sind Tarif-/Info-Positionen ohne Bestell-/Rechnungs-
+// bedarf, bleiben deshalb bewusst außen vor. Status direkt "OPEN" (= aktiv/
+// beim Kunden), da es kein eigenes "gesendet"-Status in weclapp gibt.
+// Läuft best-effort: schlägt das Anlegen fehl, wird das im Log vermerkt,
+// blockiert aber NICHT den eigentlichen Mailversand.
+async function erstelleWeclappAngebot(partyId, kaufArtikel, dienstleistungArtikel) {
+  const quotationItems = [
+    ...kaufArtikel.map((a) => ({
+      articleId: a.articleId,
+      quantity: '1',
+      optional: false,
+      alternative: false
+    })),
+    ...dienstleistungArtikel.map((a) => ({
+      articleId: a.articleId,
+      quantity: String(a.quantity || 1),
+      optional: false,
+      alternative: false
+    }))
+  ];
+
+  if (quotationItems.length === 0) return null;
+
+  try {
+    const angebot = await weclapp('/quotation', {
+      method: 'POST',
+      body: JSON.stringify({
+        customerId: partyId,
+        status: 'OPEN',
+        quotationItems
+      })
+    });
+    return { id: angebot.id, quotationNumber: angebot.quotationNumber || null };
+  } catch (fehler) {
+    console.error('weclapp-Angebot konnte nicht angelegt werden:', fehler.message);
+    return null;
+  }
 }
 
 async function handlePut(partyId, body) {
@@ -823,6 +865,14 @@ exports.handler = async (event) => {
       const prospekte = (await Promise.all(produktArtikel.map(ladeProspekt))).filter(Boolean);
       console.error(`Prospekte gefunden: ${prospekte.length} von ${produktArtikel.length} Artikeln`);
 
+      // Bei jedem Versand (auch bei Korrekturen/erneutem Senden) zusätzlich ein
+      // eigenständiges weclapp-Angebot anlegen - so bleibt jede Version dokumentiert.
+      const weclappAngebot = await erstelleWeclappAngebot(
+        partyId,
+        daten.blocks.kauf,
+        daten.blocks.dienstleistung
+      );
+
       const webhookResponse = await fetch(process.env.N8N_WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -831,7 +881,8 @@ exports.handler = async (event) => {
           betreff,
           htmlInhalt: html,
           ticketId: daten.ticket.ticketId,
-          anhaenge: prospekte
+          anhaenge: prospekte,
+          sprache: daten.ticket.sprache
         })
       });
 
@@ -840,7 +891,7 @@ exports.handler = async (event) => {
         throw new HandledError(502, `Mailversand über n8n fehlgeschlagen: ${text || webhookResponse.status}`);
       }
 
-      return { statusCode: 200, headers, body: JSON.stringify({ gesendet: true }) };
+      return { statusCode: 200, headers, body: JSON.stringify({ gesendet: true, weclappAngebot }) };
     }
 
     if (event.httpMethod === 'GET') {
