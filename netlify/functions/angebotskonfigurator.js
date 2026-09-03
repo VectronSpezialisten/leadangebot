@@ -306,7 +306,20 @@ function generiereAngebotsHtml(daten) {
         </tr>
       `).join('');
 
-  const anrede = ticket.ansprechpartner ? `Guten Tag ${ticket.ansprechpartner},` : 'Guten Tag,';
+  // Herr/Frau aus der weclapp-Anrede (salutation) ableiten, falls kein
+  // Vorname hinterlegt ist - besser als nur den nackten Nachnamen zu zeigen.
+  const ANREDE_AUS_SALUTATION = { MR: 'Herr', MRS: 'Frau', FAMILY: 'Familie' };
+  let anrede;
+  if (ticket.ansprechpartnerVorname) {
+    anrede = `Guten Tag ${ticket.ansprechpartner},`;
+  } else if (ticket.ansprechpartnerNachname) {
+    const titel = ANREDE_AUS_SALUTATION[ticket.ansprechpartnerAnrede];
+    anrede = titel
+      ? `Guten Tag ${titel} ${ticket.ansprechpartnerNachname},`
+      : `Guten Tag ${ticket.ansprechpartnerNachname},`;
+  } else {
+    anrede = 'Guten Tag,';
+  }
   // Intro-Text kommt aus dem Artikellangtext des Artikels "intro" (in weclapp
   // gepflegt, wie AGB/Impressum) - Firmenname wird automatisch angehängt.
   // Fallback auf einen statischen Text, falls der Artikel (noch) nicht existiert.
@@ -383,32 +396,41 @@ function generiereAngebotsHtml(daten) {
     </table>
   </td></tr>
 
-  <!-- Fuß-Ersatz: 1) Hinweise, 2) Texte (konfigurierte Reihenfolge, ohne Impressum),
-       3) Impressum immer zuletzt, zentriert. Kein statischer Signaturtext mehr. -->
-  ${daten.hinweise ? `
-  <tr><td style="padding-top:28px;border-top:1px solid #d4d4d4;font-size:13px;line-height:1.5;color:#171717;">
-    ${daten.hinweise}
-  </td></tr>` : ''}
-
-  ${(daten.blocks.texte || []).filter((t) => t.articleNumber !== 'imp').map((t, i, arr) => {
-    const istAgb = t.articleNumber === 'agb';
-    const groesse = istAgb ? '11px' : '13px';
-    const farbe = istAgb ? '#737373' : '#171717';
-    return `
-    <tr><td style="padding-top:${(!daten.hinweise && i === 0) ? '28' : '20'}px;${(!daten.hinweise && i === 0) ? 'border-top:1px solid #d4d4d4;' : ''}font-size:${groesse};line-height:1.5;color:${farbe};">
-      ${t.beschreibung || ''}
-    </td></tr>
-  `;
-  }).join('')}
-
+  <!-- Fuß-Ersatz: Hinweise -> individuelle Texte -> Grußformel -> AGB -> Impressum
+       (immer zuletzt, zentriert). Border-oben nur auf den ersten Abschnitt. -->
   ${(() => {
+    const abschnitte = [];
+
+    if (daten.hinweise) {
+      abschnitte.push(`<td style="STIL font-size:13px;line-height:1.5;color:#171717;">${daten.hinweise}</td>`);
+    }
+
+    const individuelleTexte = (daten.blocks.texte || []).filter(
+      (t) => t.articleNumber !== 'imp' && t.articleNumber !== 'agb'
+    );
+    for (const t of individuelleTexte) {
+      abschnitte.push(`<td style="STIL font-size:13px;line-height:1.5;color:#171717;">${t.beschreibung || ''}</td>`);
+    }
+
+    // Grußformel steht immer vor der AGB, unabhängig davon ob Hinweise/weitere Texte da sind.
+    abschnitte.push('<td style="STIL font-size:13px;line-height:1.5;color:#171717;">Mit freundlichen Grüßen<br>Karsten Brauer</td>');
+
+    const agbEintrag = (daten.blocks.texte || []).find((t) => t.articleNumber === 'agb');
+    if (agbEintrag) {
+      abschnitte.push(`<td style="STIL font-size:13px;line-height:1.5;color:#171717;">${agbEintrag.beschreibung || ''}</td>`);
+    }
+
     const impressum = (daten.blocks.texte || []).find((t) => t.articleNumber === 'imp');
-    if (!impressum) return '';
-    const keineVorherigenElemente = !daten.hinweise && (daten.blocks.texte || []).filter((t) => t.articleNumber !== 'imp').length === 0;
-    return `
-    <tr><td style="padding-top:${keineVorherigenElemente ? '28' : '20'}px;${keineVorherigenElemente ? 'border-top:1px solid #d4d4d4;' : ''}font-size:11px;line-height:1.5;color:#737373;text-align:center;">
-      ${impressum.beschreibung || ''}
-    </td></tr>`;
+    if (impressum) {
+      abschnitte.push(`<td style="STIL font-size:11px;line-height:1.5;color:#737373;text-align:center;">${impressum.beschreibung || ''}</td>`);
+    }
+
+    return abschnitte
+      .map((td, i) => {
+        const stil = i === 0 ? 'padding-top:28px;border-top:1px solid #d4d4d4;' : 'padding-top:20px;';
+        return `<tr>${td.replace('STIL', stil)}</tr>`;
+      })
+      .join('\n');
   })()}
 
 </table>
@@ -473,6 +495,8 @@ async function loeseTicketInfo(ticket) {
     letzterKommentar,
     ansprechpartner: kontakt ? [kontakt.firstName, kontakt.lastName].filter(Boolean).join(' ') : null,
     ansprechpartnerVorname: kontakt ? kontakt.firstName : null,
+    ansprechpartnerNachname: kontakt ? kontakt.lastName : null,
+    ansprechpartnerAnrede: kontakt ? kontakt.salutation : null,
     telefon: kontakt ? kontakt.mobilePhone1 : null,
     email: kontakt ? kontakt.email : null
   };
