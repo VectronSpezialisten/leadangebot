@@ -98,6 +98,18 @@
     text-decoration: none;
   }
   .info-panel__kontakt a:hover { text-decoration: underline; }
+  .info-panel__detailzeile {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 13px;
+    padding: 3px 0;
+  }
+  .info-panel__trenner {
+    border: none;
+    border-top: 1px solid var(--gray-300);
+    margin: 16px 0;
+  }
   .info-panel__kommentar {
     border-top: 1px solid var(--gray-300);
     padding-top: 14px;
@@ -376,22 +388,6 @@
     <input type="text" id="ticketNummerInput" placeholder="z.B. TB12345" autocomplete="off">
     <button id="ticketSuchenBtn">Suchen</button>
     <div class="error-msg" id="ticketSucheError"></div>
-
-    <div id="ticketBestaetigung" style="display:none; margin-top:20px;">
-      <div class="payment-zeile">
-        <span class="payment-label">Betreff</span>
-        <span class="payment-wert" id="ticketBestaetigungBetreff"></span>
-      </div>
-      <div class="payment-zeile">
-        <span class="payment-label">Kunde</span>
-        <span class="payment-wert" id="ticketBestaetigungKunde"></span>
-      </div>
-      <div class="payment-zeile">
-        <span class="payment-label">Ansprechpartner</span>
-        <span class="payment-wert" id="ticketBestaetigungAnsprechpartner"></span>
-      </div>
-      <button id="ticketWeiterBtn">Weiter</button>
-    </div>
   </div>
 
   <!-- App-Bereich, erscheint erst nach erfolgreichem Login -->
@@ -526,7 +522,6 @@
 <!-- Nur im Desktop-Modus sichtbar (siehe CSS media query) - im Smartphone-Modus
      komplett ausgeblendet, damit auf schmalen Bildschirmen kein Platz verloren geht. -->
 <aside class="info-panel" id="infoPanel">
-  <h2 class="info-panel__title">Ticket-Info</h2>
   <div id="infoPanelInhalt">
     <p class="info-panel__leer">Kein Ticket verknüpft.</p>
   </div>
@@ -1006,13 +1001,14 @@
     el.style.display = "block";
   }
 
-  function renderInfoPanel(ticket) {
+  function renderInfoPanel(ticket, kunde) {
     const panel = document.getElementById("infoPanel");
     const inhalt = document.getElementById("infoPanelInhalt");
     const kontaktZeile = document.getElementById("kontaktZeile");
 
-    // Ansprechpartner + Telefon jetzt im festen Bereich direkt unter dem Betrieb,
-    // nicht mehr im Info-Panel (das zeigt nur noch die Ticket-Beschreibung).
+    // Kontakt+Telefon bleibt zusätzlich im festen Bereich unter dem Betrieb -
+    // das Info-Panel ist ja nur im Desktop-Modus sichtbar (siehe Media Query),
+    // im Smartphone-Modus braucht's die Info trotzdem irgendwo.
     if (ticket && (ticket.ansprechpartner || ticket.telefon)) {
       const telefonHtml = ticket.telefon
         ? `<a href="tel:${ticket.telefon.replace(/\s+/g, '')}">${ticket.telefon}</a>`
@@ -1028,14 +1024,29 @@
       return;
     }
 
+    const telefonHtml = ticket.telefon
+      ? `<a href="tel:${ticket.telefon.replace(/\s+/g, '')}">${ticket.telefon}</a>`
+      : '–';
     const beschreibungHtml = ticket.beschreibung || '<p>Keine Beschreibung hinterlegt.</p>';
     const kommentarHtml = ticket.letzterKommentar
-      ? `<div class="info-panel__kommentar">
+      ? `<div style="margin-top:14px;">
            <div class="info-panel__kontakt-label">Letzter Kommentar</div>
            <div>${ticket.letzterKommentar}</div>
          </div>`
       : '';
-    inhalt.innerHTML = `<div class="info-panel__beschreibung">${beschreibungHtml}</div>${kommentarHtml}`;
+
+    inhalt.innerHTML = `
+      <div class="info-panel__title">Ticket-Details</div>
+      <div class="info-panel__detailzeile"><span class="info-panel__kontakt-label">Kunde</span><span>${kunde || '–'}</span></div>
+      <div class="info-panel__detailzeile"><span class="info-panel__kontakt-label">Betreff</span><span>${ticket.betreff || '–'}</span></div>
+      <div class="info-panel__detailzeile"><span class="info-panel__kontakt-label">Kontakt</span><span>${ticket.ansprechpartner || '–'} · ${telefonHtml}</span></div>
+
+      <hr class="info-panel__trenner">
+
+      <div class="info-panel__title">Summary</div>
+      <div class="info-panel__beschreibung">${beschreibungHtml}</div>
+      ${kommentarHtml}
+    `;
 
     // Passt sich der Länge an: wenn der Inhalt höher ist als der verfügbare
     // Platz (also gescrollt werden müsste), wird das Panel doppelt so breit -
@@ -1061,7 +1072,7 @@
       document.getElementById("hinweiseFeld").value = "";
 
       document.getElementById("partyName").textContent = daten.party.company;
-      renderInfoPanel(daten.ticket);
+      renderInfoPanel(daten.ticket, daten.party.company);
       for (const modulName of ALLE_BLOCK_NAMEN) {
         initialisiereSuche(modulName);
       }
@@ -1192,20 +1203,20 @@
 
     async function fuehreTicketsucheAus(ticketNummer, zugang) {
       const ticketSucheError = document.getElementById("ticketSucheError");
-      const ticketBestaetigung = document.getElementById("ticketBestaetigung");
       ticketSucheError.style.display = "none";
-      ticketBestaetigung.style.display = "none";
 
       if (!ticketNummer) return;
 
       try {
         const daten = await sucheTicket(ticketNummer, zugang);
-        zustand.gefundenePartyId = daten.partyId;
-        zustand.gefundeneTicketId = daten.ticketId;
-        document.getElementById("ticketBestaetigungBetreff").textContent = daten.ticketBetreff || "–";
-        document.getElementById("ticketBestaetigungKunde").textContent = daten.kunde || "–";
-        document.getElementById("ticketBestaetigungAnsprechpartner").textContent = daten.ansprechpartner || "–";
-        ticketBestaetigung.style.display = "block";
+
+        let bereinigteUrl = `${window.location.pathname}?partyId=${encodeURIComponent(daten.partyId)}`;
+        if (daten.ticketId) {
+          bereinigteUrl += `&ticketId=${encodeURIComponent(daten.ticketId)}`;
+        }
+        window.history.replaceState({}, "", bereinigteUrl);
+
+        await starteApp(daten.partyId, zugang, daten.ticketId);
       } catch (err) {
         if (err.message !== "Nicht autorisiert") {
           ticketSucheError.textContent = err.message;
@@ -1219,18 +1230,6 @@
       const zugang = getZugang();
       if (!zugang) { zeigeLogin(); return; }
       await fuehreTicketsucheAus(ticketNummer, zugang);
-    });
-
-    document.getElementById("ticketWeiterBtn").addEventListener("click", async () => {
-      const zugang = getZugang();
-      if (!zugang || !zustand.gefundenePartyId) return;
-
-      let bereinigteUrl = `${window.location.pathname}?partyId=${encodeURIComponent(zustand.gefundenePartyId)}`;
-      if (zustand.gefundeneTicketId) {
-        bereinigteUrl += `&ticketId=${encodeURIComponent(zustand.gefundeneTicketId)}`;
-      }
-      window.history.replaceState({}, "", bereinigteUrl);
-      await starteApp(zustand.gefundenePartyId, zugang, zustand.gefundeneTicketId);
     });
 
     bindeHinzufuegenButtons();
@@ -1354,6 +1353,7 @@
 
         sendenErfolg.style.display = "block";
         sendenBtn.textContent = "Angebot senden";
+        sendenBtn.disabled = false;
       } catch (err) {
         sendenBtn.textContent = "Angebot senden";
         sendenBtn.disabled = false;
