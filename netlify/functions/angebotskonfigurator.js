@@ -306,7 +306,12 @@ function generiereAngebotsHtml(daten) {
         </tr>
       `).join('');
 
-  const anrede = ticket.ansprechpartnerVorname ? `Guten Tag ${ticket.ansprechpartnerVorname},` : 'Guten Tag,';
+  const anrede = ticket.ansprechpartner ? `Guten Tag ${ticket.ansprechpartner},` : 'Guten Tag,';
+  // Intro-Text kommt aus dem Artikellangtext des Artikels "intro" (in weclapp
+  // gepflegt, wie AGB/Impressum) - Firmenname wird automatisch angehängt.
+  // Fallback auf einen statischen Text, falls der Artikel (noch) nicht existiert.
+  const introBasis = daten.introText || 'vielen Dank für Ihr Interesse an Vectron Smart4Pay. Nachfolgend finden Sie Ihr individuelles Angebot für';
+  const introText = `${introBasis} ${daten.party.company}.`;
 
   return `<!DOCTYPE html>
 <html>
@@ -332,7 +337,7 @@ function generiereAngebotsHtml(daten) {
   <!-- Kopf -->
   <tr><td style="font-size:15px;line-height:1.5;padding-bottom:16px;">
     ${anrede}<br><br>
-    vielen Dank für Ihr Interesse an Vectron Smart4Pay. Nachfolgend finden Sie Ihr individuelles Angebot für <strong>${daten.party.company}</strong>.
+    ${introText}
   </td></tr>
 
   <!-- Ergebnis der Konfiguration -->
@@ -356,7 +361,7 @@ function generiereAngebotsHtml(daten) {
       <tr><td colspan="2">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
           <tr><td style="padding:3px 0;color:#404040;">Tariftyp</td><td style="padding:3px 0;text-align:right;">${(blocks.tariftyp && blocks.tariftyp[0] && blocks.tariftyp[0].name) || '–'}</td></tr>
-          <tr><td style="padding:3px 0;color:#404040;">Faktor</td><td style="padding:3px 0;text-align:right;">${payment.faktor != null ? payment.faktor.toString().replace('.', ',') : '–'}</td></tr>
+          <tr><td style="padding:3px 0;color:#404040;">Faktor</td><td style="padding:3px 0;text-align:right;">${payment.faktor != null ? payment.faktor.toString().replace('.', ',') + '%' : '–'}</td></tr>
           <tr><td style="padding:3px 0;color:#404040;">Kosten je Transaktion</td><td style="padding:3px 0;text-align:right;">${payment.kostenProTransaktion != null ? formatPreisServer(payment.kostenProTransaktion) : '–'}</td></tr>
         </table>
       </td></tr>
@@ -424,6 +429,19 @@ async function ladeLetztenKommentar(ticketId) {
     );
     const letzter = (response.result || [])[0];
     return letzter ? letzter.comment : null;
+  } catch {
+    return null;
+  }
+}
+
+// Intro-Text für den E-Mail-Kopf kommt aus dem Artikellangtext des Artikels
+// mit articleNumber "intro" (analog zu agb/imp) - robust gegen fehlenden
+// Artikel (z.B. noch nicht angelegt), dann greift der Fallback-Text.
+async function ladeIntroText() {
+  try {
+    const response = await weclapp(`/article?articleNumber-eq=intro`);
+    const artikel = (response.result || [])[0];
+    return artikel ? artikel.description : null;
   } catch {
     return null;
   }
@@ -643,9 +661,10 @@ exports.handler = async (event) => {
     if (event.httpMethod === 'POST' && params.aktion === 'vorschau') {
       const body = JSON.parse(event.body || '{}');
 
-      const [party, ticket] = await Promise.all([
+      const [party, ticket, introText] = await Promise.all([
         weclapp(`/party/id/${partyId}`),
-        params.ticketId ? weclapp(`/ticket/id/${params.ticketId}`).catch(() => null) : Promise.resolve(null)
+        params.ticketId ? weclapp(`/ticket/id/${params.ticketId}`).catch(() => null) : Promise.resolve(null),
+        ladeIntroText()
       ]);
       const ticketInfo = await loeseTicketInfo(ticket);
 
@@ -658,6 +677,7 @@ exports.handler = async (event) => {
         blocks: body.blocks,
         payment: body.payment,
         hinweise: body.hinweise || null,
+        introText,
         ticket: ticketInfo
       };
       const html = generiereAngebotsHtml(daten);
@@ -684,11 +704,15 @@ exports.handler = async (event) => {
 
       await handlePut(partyId, body);
 
-      const daten = await handleGet(partyId, params.ticketId, {
-        dienstleistung: body.dienstleistung,
-        texte: body.texte
-      });
+      const [daten, introText] = await Promise.all([
+        handleGet(partyId, params.ticketId, {
+          dienstleistung: body.dienstleistung,
+          texte: body.texte
+        }),
+        ladeIntroText()
+      ]);
       daten.hinweise = body.hinweise || null;
+      daten.introText = introText;
 
       if (!daten.ticket) {
         throw new HandledError(422, 'Ohne verknüpftes Ticket ist keine Vorschau/Versand möglich.');
