@@ -462,6 +462,10 @@ function generiereAngebotsHtml(daten) {
 
     // Grußformel steht immer vor der AGB, unabhängig davon ob Hinweise/weitere Texte da sind.
     abschnitte.push('<td style="STIL font-size:13px;line-height:1.5;color:#171717;">Mit freundlichen Grüßen<br>Karsten Brauer</td>');
+    // Feste Trennmarke: n8n splittet das HTML hier für zwei separate
+    // Übersetzungs-Aufrufe (Kopf/Angebot vs. AGB+Impressum), damit lange
+    // Zielsprachen (z.B. Russisch) nicht am Token-Limit scheitern.
+    abschnitte.push('<td style="padding:0;"><!--AGB_TRENNSTELLE--></td>');
 
     const agbEintrag = (daten.blocks.texte || []).find((t) => t.articleNumber === 'agb');
     if (agbEintrag) {
