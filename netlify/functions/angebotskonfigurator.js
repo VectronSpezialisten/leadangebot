@@ -257,6 +257,10 @@ function katalogEintragAus(article) {
     zeitaufwand: ermittleZeitaufwand(article),
     beschreibung: article.longText || null,
     erlaubteBloecke: ermittleErlaubteBloecke(article),
+    // Wird fürs Anlegen eines weclapp-Angebots benötigt - quotationItem.
+    // invoicingType muss zum Artikel passen (EFFORT bei Dienstleistungen,
+    // sonst FIXED_PRICE), sonst schlägt POST /quotation mit 400 fehl.
+    invoicingType: article.invoicingType || 'FIXED_PRICE',
     // "Artikelbild" wird bei euch auch für Prospekt-PDFs zweckentfremdet -
     // Endpunkt liefert laut API auch application/pdf zurück, nicht nur Bilder.
     artikelbilder: (article.articleImages || []).map((img) => ({
@@ -666,13 +670,15 @@ async function erstelleWeclappAngebot(partyId, kaufArtikel, dienstleistungArtike
       articleId: a.articleId,
       quantity: '1',
       optional: false,
-      alternative: false
+      alternative: false,
+      invoicingType: a.invoicingType
     })),
     ...dienstleistungArtikel.map((a) => ({
       articleId: a.articleId,
       quantity: String(a.quantity || 1),
       optional: false,
-      alternative: false
+      alternative: false,
+      invoicingType: a.invoicingType
     }))
   ];
 
