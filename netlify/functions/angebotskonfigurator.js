@@ -744,6 +744,27 @@ async function erstelleWeclappAngebot(partyId, kaufArtikel, dienstleistungArtike
   }
 }
 
+// Setzt das Wiedervorlagedatum am Ticket. PUT braucht das komplette
+// Ticket-Objekt (siehe Erfahrung beim "Bezug"-Feature: Weglassen von Feldern
+// wie ticketStatusId führte dort zu "required"-Fehlern) - deshalb komplett
+// unverändert zurückschicken und nur followUpDate ändern. Best-effort:
+// schlägt es fehl, wird geloggt, blockiert aber nicht Speichern/Senden.
+async function aktualisiereWiedervorlage(ticketId, datumEpochMillis) {
+  if (!ticketId || !datumEpochMillis) return;
+  try {
+    const komplettesTicket = await weclapp(`/ticket/id/${ticketId}`);
+    await weclapp(`/ticket/id/${ticketId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        ...komplettesTicket,
+        followUpDate: datumEpochMillis
+      })
+    });
+  } catch (fehler) {
+    console.error('Wiedervorlagedatum konnte nicht gesetzt werden:', fehler.message);
+  }
+}
+
 async function handlePut(partyId, body) {
   const { blocks, payment } = body;
   if (!blocks) {
@@ -888,6 +909,9 @@ exports.handler = async (event) => {
       }
 
       await handlePut(partyId, body);
+      if (body.wiedervorlage) {
+        await aktualisiereWiedervorlage(params.ticketId, body.wiedervorlage);
+      }
 
       const [daten, introText] = await Promise.all([
         handleGet(partyId, params.ticketId, {
@@ -987,6 +1011,9 @@ exports.handler = async (event) => {
     if (event.httpMethod === 'PUT') {
       const body = JSON.parse(event.body || '{}');
       const ergebnis = await handlePut(partyId, body);
+      if (body.wiedervorlage) {
+        await aktualisiereWiedervorlage(params.ticketId, body.wiedervorlage);
+      }
       return { statusCode: 200, headers, body: JSON.stringify(ergebnis) };
     }
 
