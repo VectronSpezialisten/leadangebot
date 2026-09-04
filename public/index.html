@@ -1256,7 +1256,7 @@
     });
 
     async function speichereKonfiguration(zugang) {
-      const response = await fetch(`${FUNCTION_URL}?partyId=${encodeURIComponent(zustand.partyId)}`, {
+      const response = await fetch(`${FUNCTION_URL}?partyId=${encodeURIComponent(zustand.partyId)}&ticketId=${encodeURIComponent(zustand.ticketId)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
