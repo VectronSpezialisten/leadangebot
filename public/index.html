@@ -1352,9 +1352,8 @@
           const zeit = formatZeit(versand.deutschVersendetUm);
           zeilen.push(`Deutsch versendet${zeit ? " um " + zeit + " Uhr" : ""}`);
         }
-        if (versand.fremdspracheVersendet) {
-          const zeit = formatZeit(versand.fremdspracheVersendetUm);
-          zeilen.push(`Übersetzte Mail versendet${zeit ? " um " + zeit + " Uhr" : ""}`);
+        if (versand.fremdspracheAusgeloest) {
+          zeilen.push("Übersetzte Mail wird im Hintergrund versendet (BCC-Kopie geht ans eigene Postfach)");
         }
 
         sendenErfolg.textContent = zeilen.length > 0 ? zeilen.join(" · ") : "Angebot wurde versendet.";
