@@ -1262,6 +1262,8 @@
         body: JSON.stringify({
           blocks: baueModuleAlsIds(),
           payment: bauePaymentPayload(),
+          hinweise: zustand.hinweise,
+          wiedervorlage: zustand.wiedervorlage,
           email: zugang.email,
           passwort: zugang.passwort
         })
@@ -1315,7 +1317,6 @@
 
       btn.disabled = true;
       btn.textContent = "Speichert …";
-      console.log("DEBUG zustand.wiedervorlage vor dem Speichern:", zustand.wiedervorlage);
       try {
         await speichereKonfiguration(zugang);
         btn.textContent = "Erzeugt Vorschau …";
