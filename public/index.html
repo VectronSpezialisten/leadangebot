@@ -501,16 +501,6 @@
       <button type="button" class="btn-auto" id="add-texte">+ Hinzufügen</button>
     </div>
 
-    <div class="block-heading">Wiedervorlage</div>
-    <div class="payment-zeile">
-      <span class="payment-label">Datum</span>
-      <input type="date" id="wiedervorlageInput" class="payment-input">
-    </div>
-    <div style="display:flex; gap:8px; margin-top:8px;">
-      <button type="button" class="btn-auto" id="wiedervorlagePlus1Tag">+1 Tag</button>
-      <button type="button" class="btn-auto" id="wiedervorlagePlus1Woche">+1 Woche</button>
-    </div>
-
     <div class="error-msg" id="ladeFehler"></div>
 
     <button type="button" id="speichernBtn">Speichern</button>
@@ -1035,11 +1025,16 @@
 
     inhalt.innerHTML = `
       <div class="info-panel__title">Ticket-Details</div>
-      <div class="info-panel__detailzeile"><span class="info-panel__kontakt-label">Ticket</span><span><a href="https://thiedebrauer.weclapp.com/app/ticket/${ticket.ticketId}" target="_blank" rel="noopener">${ticket.ticketNummer || ticket.ticketId}</a></span></div>
+      <div class="info-panel__detailzeile"><span class="info-panel__kontakt-label">Ticket</span><span><a href="https://thiedebrauer.weclapp.com/app/ticket/${ticket.ticketId}" target="_blank" rel="noopener">${ticket.ticketNummer || ticket.ticketId}</a> · ${ticket.betreff || '–'}</span></div>
       <div class="info-panel__detailzeile"><span class="info-panel__kontakt-label">Kunde</span><span>${kunde || '–'}</span></div>
-      <div class="info-panel__detailzeile"><span class="info-panel__kontakt-label">Betreff</span><span>${ticket.betreff || '–'}</span></div>
-      <div class="info-panel__detailzeile"><span class="info-panel__kontakt-label">Kontakt</span><span>${ticket.ansprechpartner || '–'} · ${telefonHtml}</span></div>
-      <div class="info-panel__detailzeile"><span class="info-panel__kontakt-label">Sprache</span><span>${ticket.sprache || '– (keine gesetzt)'}</span></div>
+      <div class="info-panel__detailzeile"><span class="info-panel__kontakt-label">Kontakt</span><span>${ticket.ansprechpartner || '–'} · ${telefonHtml} · ${ticket.sprache || '– (keine Sprache)'}</span></div>
+      <div class="info-panel__detailzeile">
+        <span class="info-panel__kontakt-label">Wiedervorlage</span>
+        <span style="display:flex; align-items:center; gap:6px;">
+          <input type="date" id="wiedervorlageInput" style="width:130px; padding:2px 4px; border:1px solid var(--gray-300); border-radius:4px; font-size:12px;">
+          <button type="button" class="btn-klein" id="wiedervorlagePlus1Woche">+1 Woche</button>
+        </span>
+      </div>
 
       <hr class="info-panel__trenner">
 
@@ -1047,6 +1042,28 @@
       <div class="info-panel__beschreibung">${beschreibungHtml}</div>
       ${kommentarHtml}
     `;
+
+    // Wiedervorlage-Feld wird bei jedem Rendern neu erzeugt (innerHTML) -
+    // deshalb Bindungen + Standardwert hier statt einmalig in init() setzen.
+    const wiedervorlageInput = document.getElementById("wiedervorlageInput");
+    const heutePlus1 = new Date();
+    heutePlus1.setDate(heutePlus1.getDate() + 1);
+    wiedervorlageInput.value = heutePlus1.toISOString().split("T")[0];
+    zustand.wiedervorlage = heutePlus1.getTime();
+
+    wiedervorlageInput.addEventListener("input", (e) => {
+      const gewaehlt = e.target.value ? new Date(e.target.value + "T00:00:00") : null;
+      zustand.wiedervorlage = gewaehlt ? gewaehlt.getTime() : null;
+      markiereUngespeichert();
+    });
+
+    document.getElementById("wiedervorlagePlus1Woche").addEventListener("click", () => {
+      const datum = new Date();
+      datum.setDate(datum.getDate() + 7);
+      wiedervorlageInput.value = datum.toISOString().split("T")[0];
+      zustand.wiedervorlage = datum.getTime();
+      markiereUngespeichert();
+    });
 
     // Passt sich der Länge an: wenn der Inhalt höher ist als der verfügbare
     // Platz (also gescrollt werden müsste), wird das Panel doppelt so breit -
@@ -1070,13 +1087,6 @@
       zustand.module = daten.blocks;
       zustand.hinweise = "";
       document.getElementById("hinweiseFeld").value = "";
-
-      // Wiedervorlage standardmäßig auf heute+1 Tag voreinstellen.
-      const heutePlus1 = new Date();
-      heutePlus1.setDate(heutePlus1.getDate() + 1);
-      const isoDatum = heutePlus1.toISOString().split("T")[0];
-      document.getElementById("wiedervorlageInput").value = isoDatum;
-      zustand.wiedervorlage = heutePlus1.getTime();
 
       renderInfoPanel(daten.ticket, daten.party.company);
       for (const modulName of ALLE_BLOCK_NAMEN) {
@@ -1243,31 +1253,6 @@
     document.getElementById("hinweiseFeld").addEventListener("input", (e) => {
       zustand.hinweise = e.target.value;
       markiereUngespeichert();
-    });
-
-    function setzeWiedervorlage(datum) {
-      const isoDatum = datum.toISOString().split("T")[0];
-      document.getElementById("wiedervorlageInput").value = isoDatum;
-      zustand.wiedervorlage = datum.getTime();
-      markiereUngespeichert();
-    }
-
-    document.getElementById("wiedervorlageInput").addEventListener("input", (e) => {
-      const gewaehlt = e.target.value ? new Date(e.target.value + "T00:00:00") : null;
-      zustand.wiedervorlage = gewaehlt ? gewaehlt.getTime() : null;
-      markiereUngespeichert();
-    });
-
-    document.getElementById("wiedervorlagePlus1Tag").addEventListener("click", () => {
-      const datum = new Date();
-      datum.setDate(datum.getDate() + 1);
-      setzeWiedervorlage(datum);
-    });
-
-    document.getElementById("wiedervorlagePlus1Woche").addEventListener("click", () => {
-      const datum = new Date();
-      datum.setDate(datum.getDate() + 7);
-      setzeWiedervorlage(datum);
     });
 
     async function speichereKonfiguration(zugang) {
