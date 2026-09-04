@@ -970,8 +970,10 @@ exports.handler = async (event) => {
           versand: {
             deutschVersendet: n8nAntwort.deutschVersendet ?? true,
             deutschVersendetUm: n8nAntwort.deutschVersendetUm || null,
-            fremdspracheVersendet: n8nAntwort.fremdspracheVersendet ?? false,
-            fremdspracheVersendetUm: n8nAntwort.fremdspracheVersendetUm || null
+            // Nur ob eine Übersetzung überhaupt ausgelöst wurde - läuft
+            // unabhängig weiter, um ein Timeout im Backend zu vermeiden.
+            // Bestätigung dafür kommt separat (Ticket-Kommentar/BCC-Postfach).
+            fremdspracheAusgeloest: n8nAntwort.fremdspracheAusgeloest ?? false
           }
         })
       };
