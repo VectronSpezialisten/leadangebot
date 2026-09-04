@@ -1315,6 +1315,7 @@
 
       btn.disabled = true;
       btn.textContent = "Speichert …";
+      console.log("DEBUG zustand.wiedervorlage vor dem Speichern:", zustand.wiedervorlage);
       try {
         await speichereKonfiguration(zugang);
         btn.textContent = "Erzeugt Vorschau …";
