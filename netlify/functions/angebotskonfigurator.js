@@ -750,7 +750,11 @@ async function erstelleWeclappAngebot(partyId, kaufArtikel, dienstleistungArtike
 // unverändert zurückschicken und nur followUpDate ändern. Best-effort:
 // schlägt es fehl, wird geloggt, blockiert aber nicht Speichern/Senden.
 async function aktualisiereWiedervorlage(ticketId, datumEpochMillis) {
-  if (!ticketId || !datumEpochMillis) return;
+  console.error(`aktualisiereWiedervorlage aufgerufen: ticketId=${ticketId}, datumEpochMillis=${datumEpochMillis}`);
+  if (!ticketId || !datumEpochMillis) {
+    console.error('aktualisiereWiedervorlage: abgebrochen, ticketId oder Datum fehlt.');
+    return;
+  }
   try {
     const komplettesTicket = await weclapp(`/ticket/id/${ticketId}`);
     await weclapp(`/ticket/id/${ticketId}`, {
@@ -760,6 +764,7 @@ async function aktualisiereWiedervorlage(ticketId, datumEpochMillis) {
         followUpDate: datumEpochMillis
       })
     });
+    console.error('aktualisiereWiedervorlage: erfolgreich gesetzt.');
   } catch (fehler) {
     console.error('Wiedervorlagedatum konnte nicht gesetzt werden:', fehler.message);
   }
