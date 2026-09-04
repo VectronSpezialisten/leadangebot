@@ -501,6 +501,16 @@
       <button type="button" class="btn-auto" id="add-texte">+ Hinzufügen</button>
     </div>
 
+    <div class="block-heading">Wiedervorlage</div>
+    <div class="payment-zeile">
+      <span class="payment-label">Datum</span>
+      <input type="date" id="wiedervorlageInput" class="payment-input">
+    </div>
+    <div style="display:flex; gap:8px; margin-top:8px;">
+      <button type="button" class="btn-auto" id="wiedervorlagePlus1Tag">+1 Tag</button>
+      <button type="button" class="btn-auto" id="wiedervorlagePlus1Woche">+1 Woche</button>
+    </div>
+
     <div class="error-msg" id="ladeFehler"></div>
 
     <button type="button" id="speichernBtn">Speichern</button>
@@ -555,7 +565,8 @@
     module: { kostenpflichtig: [], enthalten: [], kauf: [], vorhanden: [], tariftyp: [], dienstleistung: [], texte: [] },
     ausgewaehlteArtikelId: { kostenpflichtig: null, enthalten: null, kauf: null, vorhanden: null, tariftyp: null, dienstleistung: null, texte: null },
     payment: { faktor: null, kostenProTransaktion: null },
-    hinweise: ""
+    hinweise: "",
+    wiedervorlage: null
   };
 
   function getZugang() {
@@ -1060,6 +1071,13 @@
       zustand.hinweise = "";
       document.getElementById("hinweiseFeld").value = "";
 
+      // Wiedervorlage standardmäßig auf heute+1 Tag voreinstellen.
+      const heutePlus1 = new Date();
+      heutePlus1.setDate(heutePlus1.getDate() + 1);
+      const isoDatum = heutePlus1.toISOString().split("T")[0];
+      document.getElementById("wiedervorlageInput").value = isoDatum;
+      zustand.wiedervorlage = heutePlus1.getTime();
+
       renderInfoPanel(daten.ticket, daten.party.company);
       for (const modulName of ALLE_BLOCK_NAMEN) {
         initialisiereSuche(modulName);
@@ -1227,6 +1245,31 @@
       markiereUngespeichert();
     });
 
+    function setzeWiedervorlage(datum) {
+      const isoDatum = datum.toISOString().split("T")[0];
+      document.getElementById("wiedervorlageInput").value = isoDatum;
+      zustand.wiedervorlage = datum.getTime();
+      markiereUngespeichert();
+    }
+
+    document.getElementById("wiedervorlageInput").addEventListener("input", (e) => {
+      const gewaehlt = e.target.value ? new Date(e.target.value + "T00:00:00") : null;
+      zustand.wiedervorlage = gewaehlt ? gewaehlt.getTime() : null;
+      markiereUngespeichert();
+    });
+
+    document.getElementById("wiedervorlagePlus1Tag").addEventListener("click", () => {
+      const datum = new Date();
+      datum.setDate(datum.getDate() + 1);
+      setzeWiedervorlage(datum);
+    });
+
+    document.getElementById("wiedervorlagePlus1Woche").addEventListener("click", () => {
+      const datum = new Date();
+      datum.setDate(datum.getDate() + 7);
+      setzeWiedervorlage(datum);
+    });
+
     async function speichereKonfiguration(zugang) {
       const response = await fetch(`${FUNCTION_URL}?partyId=${encodeURIComponent(zustand.partyId)}`, {
         method: "PUT",
@@ -1259,6 +1302,7 @@
             kostenProTransaktion: alsZahlOderNull(zustand.payment.kostenProTransaktion)
           },
           hinweise: zustand.hinweise,
+          wiedervorlage: zustand.wiedervorlage,
           email: zugang.email,
           passwort: zugang.passwort
         })
@@ -1329,6 +1373,7 @@
             dienstleistung: zustand.module.dienstleistung,
             texte: zustand.module.texte,
             hinweise: zustand.hinweise,
+            wiedervorlage: zustand.wiedervorlage,
             email: zugang.email,
             passwort: zugang.passwort
           })
