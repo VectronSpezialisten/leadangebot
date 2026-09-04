@@ -429,7 +429,7 @@ function generiereAngebotsHtml(daten) {
       <tr><td colspan="2">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
           <tr><td style="padding:3px 0;color:#404040;">Tariftyp</td><td style="padding:3px 0;text-align:right;">${(blocks.tariftyp && blocks.tariftyp[0] && blocks.tariftyp[0].name) || '–'}</td></tr>
-          <tr><td style="padding:3px 0;color:#404040;">Serviceentgelt</td><td style="padding:3px 0;text-align:right;">${payment.faktor != null ? payment.faktor.toString().replace('.', ',') + '%' : '–'}</td></tr>
+          <tr><td style="padding:3px 0;color:#404040;">Gebühr (umsatzabhängig)</td><td style="padding:3px 0;text-align:right;">${payment.faktor != null ? payment.faktor.toString().replace('.', ',') + '%' : '–'}</td></tr>
           <tr><td style="padding:3px 0;color:#404040;">Kosten je Transaktion</td><td style="padding:3px 0;text-align:right;">${payment.kostenProTransaktion != null ? formatPreisServer(payment.kostenProTransaktion) : '–'}</td></tr>
         </table>
       </td></tr>
@@ -478,6 +478,9 @@ function generiereAngebotsHtml(daten) {
 
     const impressum = (daten.blocks.texte || []).find((t) => t.articleNumber === 'imp');
     if (impressum) {
+      // Logo direkt vor dem Impressum, mittig - Breite an der Textzeile
+      // "Thiede & Brauer GmbH" im Impressum orientiert.
+      abschnitte.push('<td style="STIL text-align:center;"><img src="https://leadangebot.netlify.app/logo-mailfuss.png" width="130" height="89" alt="Thiede & Brauer" style="display:inline-block;border:0;"></td>');
       abschnitte.push(`<td style="STIL font-size:11px;line-height:1.5;color:#737373;text-align:center;">${impressum.beschreibung || ''}</td>`);
     }
 
@@ -952,7 +955,26 @@ exports.handler = async (event) => {
         throw new HandledError(502, `Mailversand über n8n fehlgeschlagen: ${text || webhookResponse.status}`);
       }
 
-      return { statusCode: 200, headers, body: JSON.stringify({ gesendet: true, weclappAngebot }) };
+      // n8n meldet pro Sprache Versandstatus + Zeitstempel zurück (siehe
+      // Workflow-Nodes "Deutsch: Erfolg markieren" / "Fremdsprache: Erfolg
+      // markieren"). Robust gegen fehlende Felder, falls der Workflow noch
+      // nicht aktualisiert ist - dann bleiben die Werte einfach leer.
+      const n8nAntwort = await webhookResponse.json().catch(() => ({}));
+
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          gesendet: true,
+          weclappAngebot,
+          versand: {
+            deutschVersendet: n8nAntwort.deutschVersendet ?? true,
+            deutschVersendetUm: n8nAntwort.deutschVersendetUm || null,
+            fremdspracheVersendet: n8nAntwort.fremdspracheVersendet ?? false,
+            fremdspracheVersendetUm: n8nAntwort.fremdspracheVersendetUm || null
+          }
+        })
+      };
     }
 
     if (event.httpMethod === 'GET') {
