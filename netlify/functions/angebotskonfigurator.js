@@ -750,11 +750,7 @@ async function erstelleWeclappAngebot(partyId, kaufArtikel, dienstleistungArtike
 // unverändert zurückschicken und nur followUpDate ändern. Best-effort:
 // schlägt es fehl, wird geloggt, blockiert aber nicht Speichern/Senden.
 async function aktualisiereWiedervorlage(ticketId, datumEpochMillis) {
-  console.error(`aktualisiereWiedervorlage aufgerufen: ticketId=${ticketId}, datumEpochMillis=${datumEpochMillis}`);
-  if (!ticketId || !datumEpochMillis) {
-    console.error('aktualisiereWiedervorlage: abgebrochen, ticketId oder Datum fehlt.');
-    return;
-  }
+  if (!ticketId || !datumEpochMillis) return;
   try {
     const komplettesTicket = await weclapp(`/ticket/id/${ticketId}`);
     await weclapp(`/ticket/id/${ticketId}`, {
@@ -764,7 +760,6 @@ async function aktualisiereWiedervorlage(ticketId, datumEpochMillis) {
         followUpDate: datumEpochMillis
       })
     });
-    console.error('aktualisiereWiedervorlage: erfolgreich gesetzt.');
   } catch (fehler) {
     console.error('Wiedervorlagedatum konnte nicht gesetzt werden:', fehler.message);
   }
@@ -950,12 +945,7 @@ exports.handler = async (event) => {
         ...daten.blocks.kauf,
         ...daten.blocks.vorhanden
       ];
-      console.error('Produktartikel für Prospekt-Check:', produktArtikel.map((a) => ({
-        articleNumber: a.articleNumber,
-        anzahlBilder: (a.artikelbilder || []).length
-      })));
       const prospekte = (await Promise.all(produktArtikel.map(ladeProspekt))).filter(Boolean);
-      console.error(`Prospekte gefunden: ${prospekte.length} von ${produktArtikel.length} Artikeln`);
 
       // Bei jedem Versand (auch bei Korrekturen/erneutem Senden) zusätzlich ein
       // eigenständiges weclapp-Angebot anlegen - so bleibt jede Version dokumentiert.
@@ -1016,12 +1006,10 @@ exports.handler = async (event) => {
     if (event.httpMethod === 'PUT') {
       const body = JSON.parse(event.body || '{}');
       const ergebnis = await handlePut(partyId, body);
-      let wiedervorlageDebug = { versucht: false };
       if (body.wiedervorlage) {
-        wiedervorlageDebug = { versucht: true, ticketId: params.ticketId, wert: body.wiedervorlage };
         await aktualisiereWiedervorlage(params.ticketId, body.wiedervorlage);
       }
-      return { statusCode: 200, headers, body: JSON.stringify({ ...ergebnis, wiedervorlageDebug }) };
+      return { statusCode: 200, headers, body: JSON.stringify(ergebnis) };
     }
 
     return { statusCode: 405, headers, body: JSON.stringify({ fehler: 'Methode nicht erlaubt.' }) };
