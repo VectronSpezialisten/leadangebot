@@ -1016,10 +1016,12 @@ exports.handler = async (event) => {
     if (event.httpMethod === 'PUT') {
       const body = JSON.parse(event.body || '{}');
       const ergebnis = await handlePut(partyId, body);
+      let wiedervorlageDebug = { versucht: false };
       if (body.wiedervorlage) {
+        wiedervorlageDebug = { versucht: true, ticketId: params.ticketId, wert: body.wiedervorlage };
         await aktualisiereWiedervorlage(params.ticketId, body.wiedervorlage);
       }
-      return { statusCode: 200, headers, body: JSON.stringify(ergebnis) };
+      return { statusCode: 200, headers, body: JSON.stringify({ ...ergebnis, wiedervorlageDebug }) };
     }
 
     return { statusCode: 405, headers, body: JSON.stringify({ fehler: 'Methode nicht erlaubt.' }) };
