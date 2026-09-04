@@ -1024,6 +1024,7 @@
 
     inhalt.innerHTML = `
       <div class="info-panel__title">Ticket-Details</div>
+      <div class="info-panel__detailzeile"><span class="info-panel__kontakt-label">Ticket</span><span><a href="https://thiedebrauer.weclapp.com/app/ticket/${ticket.ticketId}" target="_blank" rel="noopener">${ticket.ticketNummer || ticket.ticketId}</a></span></div>
       <div class="info-panel__detailzeile"><span class="info-panel__kontakt-label">Kunde</span><span>${kunde || '–'}</span></div>
       <div class="info-panel__detailzeile"><span class="info-panel__kontakt-label">Betreff</span><span>${ticket.betreff || '–'}</span></div>
       <div class="info-panel__detailzeile"><span class="info-panel__kontakt-label">Kontakt</span><span>${ticket.ansprechpartner || '–'} · ${telefonHtml}</span></div>
